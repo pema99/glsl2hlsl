@@ -8,6 +8,7 @@ use glsl::syntax::*;
 // TODO:
 // Better handling for defines, have a replacement table
 // Refactor geez
+// texelFetch, floatBitsToInt, intBitsToFloat
 
 // ---- Setup ----
 fn main() {
