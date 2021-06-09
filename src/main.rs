@@ -5,6 +5,10 @@ use std::collections::HashSet;
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
 
+// TODO:
+// Better handling for defines, have a replacement table
+// Refactor geez
+
 // ---- Setup ----
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -135,6 +139,7 @@ where
         "iChannel1" => "_SecondTex",
         "iChannel2" => "_ThirdTex",
         "iChannel3" => "_FourthTex",
+        "gl_FragCoord" => "i.uv",
         //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
         a => a,
     };
@@ -1546,6 +1551,7 @@ where
                 "iChannel1" => "_SecondTex",
                 "iChannel2" => "_ThirdTex",
                 "iChannel3" => "_FourthTex",
+                "gl_FragCoord" => "i.uv",
                 //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
                 a => a,
             };
@@ -1575,6 +1581,7 @@ where
                 "iChannel1" => "_SecondTex",
                 "iChannel2" => "_ThirdTex",
                 "iChannel3" => "_FourthTex",
+                "gl_FragCoord" => "i.uv",
                 //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
                 a => a,
             };
@@ -1788,6 +1795,7 @@ Shader \"Converted/Template\"
             sampler2D _ThirdTex;
             sampler2D _FourthTex;
 
+            #define iMouse float2(_Time.y, _Time.y)
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y)))) 
 
             v2f vert (appdata v)

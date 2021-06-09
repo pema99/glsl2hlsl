@@ -35,6 +35,7 @@ Shader "Converted/Template"
             sampler2D _ThirdTex;
             sampler2D _FourthTex;
 
+            #define iMouse float2(_Time.y, _Time.y)
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y)))) 
 
             v2f vert (appdata v)
@@ -45,57 +46,19 @@ Shader "Converted/Template"
                 return o;
             }
 
-            #define shape(p) length(p)-2.8
-            static const float2 RMPrec = float2(0.2, 0.001);
-            static const float3 DPrec = float3(0.005, 12., 0.000001);
-            float Voronesque(in float3 p)
-            {
-                float3 i = floor(p+dot(p, 0.333333));
-                p -= i-dot(i, 0.166666);
-                float3 i1 = step(0., p-p.yzx), i2 = max(i1, 1.-i1.zxy);
-                i1 = min(i1, 1.-i1.zxy);
-                float3 p1 = p-i1+0.166666, p2 = p-i2+0.333333, p3 = p-0.5;
-                float3 rnd = float3(7, 157, 113);
-                float4 v = max(0.5-float4(dot(p, p), dot(p1, p1), dot(p2, p2), dot(p3, p3)), 0.);
-                float4 d = float4(dot(i, rnd), dot(i+i1, rnd), dot(i+i2, rnd), dot(i+1., rnd));
-                d = frac(sin(d)*262144.)*v*2.;
-                v.x = max(d.x, d.y), (v.y = max(d.z, d.w), (v.z = max(min(d.x, d.y), min(d.z, d.w)), v.w = min(v.x, v.y)));
-                return max(v.x, v.y)-max(v.z, v.w);
-            }
-
-            float2 map(float3 p)
-            {
-                float2 res = 0.;
-                float voro = Voronesque(p);
-                float3 col = voro*0.5;
-                float sphere = shape(p);
-                float sphereOut = sphere-voro;
-                float sphereIn = sphere+voro*0.5;
-                float dist = max(-sphereIn, sphereOut+0.29);
-                res = float2(dist, 1.);
-                float kernel = sphere+2.2;
-                if (kernel<res.x)
-                    res = float2(kernel, 2.);
-                    
-                return res;
-            }
-
-            float3 nor(float3 pos, float prec)
-            {
-                float2 e = float2(prec, 0.);
-                float3 n = float3(map(pos+e.xyy).x-map(pos-e.xyy).x, map(pos+e.yxy).x-map(pos-e.yxy).x, map(pos+e.yyx).x-map(pos-e.yyx).x);
-                return normalize(n);
-            }
-
-            float3 cam(float2 uv, float3 ro, float3 cu, float3 cv)
-            {
-                float3 rov = normalize(cv-ro);
-                float3 u = normalize(cross(cu, rov));
-                float3 v = normalize(cross(rov, u));
-                float3 rd = normalize(rov+u*uv.x+v*uv.y);
-                return rd;
-            }
-
+            #define I_MAX 100
+            #define E 0.001
+            #define LPOS vec3(0., 0., 0.)
+            #define L2 vec3(+cos(t*1.)*3.,2.0,-0.+sin(t*1.)*3.)
+            void rotate(inout float2 v, float angle);
+            float sdTorus(float3 p, float2 t);
+            float2 march(float3 pos, float3 dir);
+            float3 camera(float2 uv);
+            float3 blackbody(float Temp);
+            float scene(float3 p);
+            static float t;
+            static float3 h;
+            static const float3 lightCol = float3(1., 0.7, 0.51);
             float3 blackbody(float Temp)
             {
                 float3 col = 255.;
@@ -112,88 +75,106 @@ Shader "Converted/Template"
                 return col;
             }
 
-            static const float3 LPos = float3(-0.6, 0.7, -0.5);
-            static const float3 LAmb = 0.;
-            static const float3 LDif = float3(1., 0.5, 0.);
-            static const float3 LSpe = 0.8;
-            static const float3 MAmb = 0.;
-            static const float3 MDif = float3(1., 0.5, 0.);
-            static const float3 MSpe = float3(0.6, 0.6, 0.6);
-            static const float MShi = 30.;
-            float3 ads(float3 p, float3 n)
+            float sdCappedCylinder(float3 p, float2 h)
             {
-                float3 ldif = normalize(LPos-p);
-                float3 vv = normalize(0.-p);
-                float3 refl = reflect(0.-ldif, n);
-                float3 amb = MAmb*LAmb+blackbody(2000.);
-                float3 dif = max(0., dot(ldif, n.xyz))*MDif*LDif;
-                float3 spe = 0.;
-                if (dot(ldif, vv)>0.)
-                    spe = pow(max(0., dot(vv, refl)), MShi)*MSpe*LSpe;
-                    
-                return amb*1.2+dif*1.5+spe*0.8;
+                float2 d = abs(float2(length(p.xy), p.z))-h;
+                return min(max(d.x, d.y), 0.)+length(max(d, 0.));
             }
 
-            float3 nrand3(float2 co)
+            float3 evaluateLight(in float3 pos)
             {
-                float3 a = frac(cos(co.x*0.0083+co.y)*float3(130000., 470000., 290000.));
-                float3 b = frac(sin(co.x*0.0003+co.y)*float3(810000., 100000., 10000.));
-                float3 c = lerp(a, b, 0.5);
-                return c;
+                float distanceToL = length(LPOS-pos);
+                float distanceToL2 = length(L2-pos);
+                return +lightCol*1./(distanceToL2*distanceToL2);
+            }
+
+            float spiral(float2 m)
+            {
+                float r = length(m);
+                float a = atan2(m.y, m.x);
+                float v = sin(100.*(sqrt(r)-0.02*a-0.3*t*1.));
+                return clamp(v, 0., 1.);
+            }
+
+            float de_0(float3 p)
+            {
+                float ming = 100000.;
+                float a = (t+p.z*0.515)*1.;
+                float3 pr = p;
+                rotate(pr.yz, t);
+                ming = length(pr.zy)-1.5+0.051*spiral(0.05*pr.xy)-(0.5*length(pr)-2.1);
+                return ming;
+            }
+
+            float scene(float3 p)
+            {
+                float mind = length(p-L2)-0.1;
+                p.y += 2.;
+                mind = min(mind, de_0(float3(p.x, p.z, p.y)));
+                return mind;
+            }
+
+            float2 march(float3 pos, float3 dir)
+            {
+                float2 dist = 0.;
+                float3 p = 0.;
+                float2 s = 0.;
+                float3 dirr;
+                for (int i = 0;i<I_MAX; ++i)
+                {
+                    dirr = dir;
+                    rotate(dirr.zx, 0.05*dist.y);
+                    p = pos+dirr*dist.y;
+                    dist.x = scene(p);
+                    dist.y += dist.x;
+                    h += evaluateLight(p);
+                    if (dist.x<E)
+                    {
+                        break;
+                    }
+                    
+                    (s.x)++;
+                }
+                s.y = dist.y;
+                return s;
             }
 
             float4 frag (v2f i) : SV_Target
             {
-                float4 f = 0;
-                float2 g = i.uv;
+                float4 o = 0;
+                float2 f = i.uv;
                 float3 iResolution = 1;
-                float2 si = iResolution.xy;
-                float t = _Time.y;
-                float ca = t*0.14;
-                float ce = 1.;
-                float cd = 1.;
-                float3 cu = float3(0, 1, 0);
-                float3 cv = float3(0, 0, 0);
-                float2 uv = (g+g-si)/min(si.x, si.y);
-                float3 ro = float3(sin(ca)*cd, ce+1., cos(ca)*cd);
-                float3 rd = cam(uv, ro, cu, cv);
-                float3 d = 0.;
-                float3 p = ro+rd*d.x;
-                float2 s = DPrec.y;
-                for (int i = 0;i<200; i++)
-                {
-                    if (s.x<DPrec.x||s.x>DPrec.y)
-                        break;
-                        
-                    s = map(p);
-                    s.x *= s.x>DPrec.x ? RMPrec.x : RMPrec.y;
-                    d.x += s.x;
-                    p = ro+rd*d.x;
-                }
-                if (d.x<DPrec.y)
-                {
-                    float nPrec = 0.1;
-                    float3 n = nor(p, nPrec);
-                    if (s.y<1.5)
-                    {
-                        float3 SSS = ads(n, n)-ads(p, rd);
-                        SSS += blackbody(1500.*(d.x-3.));
-                        f.rgb = SSS;
-                    }
-                    else if (s.y<2.5)
-                    {
-                        float b = dot(n, normalize(ro-p))*0.9;
-                        f = (b*float4(blackbody(2000.), 0.8)+pow(b, 0.2))*(1.-d.x*0.01);
-                    }
-                    
-                }
-                else 
-                {
-                    float3 rnd = nrand3(floor(uv*2.*iResolution.x));
-                    f = pow(rnd.y, 10.);
-                }
-                return f;
+                o -= o;
+                h = 0.;
+                t = _Time.y*0.5;
+                float2 R = iResolution.xy, uv = f-R/2./R.y;
+                float3 dir = camera(uv);
+                float3 pos = float3(0., 0., 7.);
+                float2 inter = march(pos, dir);
+                o.xyz += h*1.;
+                o.xyz += 0.25*blackbody(inter.y*150.);
+                return o;
             }
+            float sdTorus(float3 p, float2 t)
+            {
+                float2 q = float2(length(p.zy)-t.x, p.x);
+                return length(q)-t.y;
+            }
+
+            float3 camera(float2 uv)
+            {
+                float fov = 1.;
+                float3 forw = float3(0., 0., -1.);
+                float3 right = float3(1., 0., 0.);
+                float3 up = float3(0., 1., 0.);
+                return normalize(uv.x*right+uv.y*up+fov*forw);
+            }
+
+            void rotate(inout float2 v, float angle)
+            {
+                v = float2(cos(angle)*v.x+sin(angle)*v.y, -sin(angle)*v.x+cos(angle)*v.y);
+            }
+
 
         ENDCG
         }
