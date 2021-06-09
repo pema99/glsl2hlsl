@@ -1,7 +1,9 @@
 use std::fmt::Arguments;
+use std::fmt::Binary;
 use std::fmt::Write;
 use std::iter;
 use std::ops::Index;
+use std::collections::HashSet;
 
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
@@ -9,151 +11,39 @@ use glsl::visitor::*;
 
 // ---- Setup ----
 fn main() {
-    let glsl = "/* 
-    Combustible Voronoi Layers
-	--------------------------
-
-    The effect itself is nothing new or exciting, just some moving 3D Voronoi layering. 
-    However, the fire palette might prove useful to some.
-
-*/
-
-
-// This is my favorite fire palette. It's trimmed down for shader usage, and is based on an 
-// article I read at Hugo Elias's site years ago. I'm sure most old people, like me, have 
-// visited his site at one time or another:
-//
-// http://freespace.virgin.net/hugo.elias/models/m_ffire.htm
-//
-vec3 firePalette(float i){
-
-    float T = 1400. + 1300.*i; // Temperature range (in Kelvin).
-    vec3 L = vec3(7.4, 5.6, 4.4); // Red, green, blue wavelengths (in hundreds of nanometers).
-    L = pow(L,vec3(5)) * (exp(1.43876719683e5/(T*L)) - 1.);
-    return 1. - exp(-5e8/L); 
-}
-
-/*
-vec3 firePalette(float i){
-
-    float T = 1400. + 1300.*i; // Temperature range (in Kelvin).
-    // Hardcode red, green and blue wavelengths (in hundreds of nanometers).
-    vec3 L = (exp(vec3(19442.7999572, 25692.271372, 32699.2544734)/T) - 1.);
-
-    return 1. - exp(-vec3(22532.6051122, 90788.296915, 303184.239775)*2.*.5/L); 
-}
-*/
-
-// Hash function. This particular one probably doesn't disperse things quite as nicely as some 
-// of the others around, but it's compact, and seems to work.
-//
-vec3 hash33(vec3 p){ 
-    
-    float n = sin(dot(p, vec3(7, 157, 113)));    
-    return fract(vec3(2097152, 262144, 32768)*n); 
-}
-
-// 3D Voronoi: Obviously, this is just a rehash of IQ's original.
-//
-float voronoi(vec3 p){
-
-	vec3 b, r, g = floor(p);
-	p = fract(p); 
-	
-
-	float d = 1.; 
-     
-    // I've unrolled one of the loops. GPU architecture is a mystery to me, but I'm aware 
-    // they're not fond of nesting, branching, etc. My laptop GPU seems to hate everything, 
-    // including multiple loops. If it were a person, we wouldn't hang out. 
-	for(int j = -1; j <= 1; j++) {
-	    for(int i = -1; i <= 1; i++) {
-    		
-		    b = vec3(i, j, -1);
-		    r = b - p + hash33(g+b);
-		    d = min(d, dot(r,r));
-    		
-		    b.z = 0.0;
-		    r = b - p + hash33(g+b);
-		    d = min(d, dot(r,r));
-    		
-		    b.z = 1.;
-		    r = b - p + hash33(g+b);
-		    d = min(d, dot(r,r));
-    			
-	    }
-	}
-	
-	return d; // Range: [0, 1]
-}
-
-// Standard fBm function with some time dialation to give a parallax 
-// kind of effect. In other words, the position and time frequencies 
-// are changed at different rates from layer to layer.
-//
-float noiseLayers(in vec3 p) {
-
-
-    vec3 t = vec3(0., 0., p.z + iTime*1.5);
-
-    const int iter = 5; // Just five layers is enough.
-    float tot = 0., sum = 0., amp = 1.; // Total, sum, amplitude.
-
-    for (int i = 0; i < iter; i++) {
-        tot += voronoi(p + t) * amp; // Add the layer to the total.
-        p *= 2.; // Position multiplied by two.
-        t *= 1.5; // Time multiplied by less than two.
-        sum += amp; // Sum of amplitudes.
-        amp *= .5; // Decrease successive layer amplitude, as normal.
+    let glsl = "vec3 hsv(float h,float s,float v) {
+        return mix(vec3(1.),clamp((abs(fract(h+vec3(3.,2.,1.)/3.)*6.-3.)-1.),0.,1.),s)*v;
     }
-    
-    return tot/sum; // Range: [0, 1].
-}
-
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    // Screen coordinates.
-	vec2 uv = (fragCoord - iResolution.xy*.5) / iResolution.y;
-	
-	// Shifting the central position around, just a little, to simulate a 
-	// moving camera, albeit a pretty lame one.
-	uv += vec2(sin(iTime*.5)*.25, cos(iTime*.5)*.125);
-	
-    // Constructing the unit ray. 
-	vec3 rd = normalize(vec3(uv.x, uv.y, 3.1415926535898/8.));
-
-    // Rotating the ray about the XY plane, to simulate a rolling camera.
-	float cs = cos(iTime*.25), si = sin(iTime*.25);
-    // Apparently \"r *= rM\" can break in some older browsers.
-	rd.xy = rd.xy*mat2(cs, -si, si, cs); 
-	
-	// Passing a unit ray multiple into the Voronoi layer function, which 
-	// is nothing more than an fBm setup with some time dialation.
-	float c = noiseLayers(rd*2.);
-	
-	// Optional: Adding a bit of random noise for a subtle dust effect. 
-	c = max(c + dot(hash33(rd)*2. - 1., vec3(.015)), 0.);
-
-    // Coloring:
-    
-    // Nebula.
-    c *= sqrt(c)*1.5; // Contrast.
-    vec3 col = firePalette(c); // Palettization.
-    //col = mix(col, col.zyx*.1+ c*.9, clamp((1.+rd.x+rd.y)*0.45, 0., 1.)); // Color dispersion.
-    col = mix(col, col.zyx*.15 + c*.85, min(pow(dot(rd.xy, rd.xy)*1.2, 1.5), 1.)); // Color dispersion.
-    col = pow(col, vec3(1.25)); // Tweaking the contrast a little.
-    
-    // The fire palette on its own. Perhaps a little too much fire color.
-    //c = pow(c*1.33, 1.25);
-    //vec3 col =  firePalette(c);
-   
-    // Black and white, just to keep the art students happy. :)
-	//c *= c*1.5;
-	//vec3 col = vec3(c);
-	
-	// Rough gamma correction, and done.
-	fragColor = vec4(sqrt(clamp(col, 0., 1.)), 1);
-}";
+    float circle(vec2 p, float r) {
+        return smoothstep(0.1, 0.0, abs(length(p)-r)); // try changing the 0.1 to 0.3
+    }
+    float r3 = sqrt(3.0);
+    void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+        vec2 uv = -1.0 + 2.0*fragCoord.xy / iResolution.xy;
+        uv.x *= iResolution.x/iResolution.y;
+        uv *= 10.0;
+        float r = smoothstep(-0.7, 0.7, sin(iTime*1.57-length(uv)*0.1))+1.0;
+        vec2 rep = vec2(4.0,r3*4.0);
+        vec2 p1 = mod(uv, rep)-rep*0.5;
+        vec2 p2 = mod(uv+vec2(2.0,0.0), rep)-rep*0.5;
+        vec2 p3 = mod(uv+vec2(1.0,r3), rep)-rep*0.5;
+        vec2 p4 = mod(uv+vec2(3.0,r3), rep)-rep*0.5;
+        vec2 p5 = mod(uv+vec2(0.0,r3*2.0), rep)-rep*0.5;
+        vec2 p6 = mod(uv+vec2(2.0,r3*2.0), rep)-rep*0.5;
+        vec2 p7 = mod(uv+vec2(1.0,r3*3.0), rep)-rep*0.5;
+        vec2 p8 = mod(uv+vec2(3.0,r3*3.0), rep)-rep*0.5;
+        
+        float c = 0.0;
+        c += circle(p1, r);
+        c += circle(p2, r);
+        c += circle(p3, r);
+        c += circle(p4, r);
+        c += circle(p5, r);
+        c += circle(p6, r);
+        c += circle(p7, r);
+        c += circle(p8 , r);
+        fragColor = vec4(hsv(r+0.7, 1.0, c), 1.0);
+    }";
 
     let stage = ShaderStage::parse(glsl);
     match &stage {
@@ -174,7 +64,32 @@ fn get_indent() -> String {
     unsafe { iter::repeat("    ").take(INDENT_LEVEL).collect::<String>() }
 }
 
+// And even more for this
+static mut MAT_TABLE: Vec<HashSet<String>> = Vec::new();
+fn add_mat(name: String) {
+    unsafe { MAT_TABLE.last_mut().unwrap().insert(name); }
+}
+fn push_mat() {
+    unsafe { MAT_TABLE.push(HashSet::new()); }
+}
+fn pop_mat() {
+    unsafe { MAT_TABLE.pop(); }
+}
+fn lookup_mat(name: &str) -> bool {
+    unsafe { MAT_TABLE.last().unwrap().contains(name) }
+}
+
 // ---- Transpilation code ----
+fn is_matrix(s: &str) -> bool {
+    match s {
+        "mat2" | "mat3" | "mat4" |"mat2x2" |"mat2x3" |"mat2x4" | 
+        "mat3x2" |"mat3x3" |"mat3x4" |"mat4x2" |"mat4x3" |"mat4x4" => true, 
+        "float2x2" | "float3x3" | "float4x4" | "float2x3" | "float2x4" |
+        "float3x2" | "float3x4" | "float4x2" | "float4x3" => true,
+        _ => lookup_mat(s)
+    }
+}
+
 // Precedence information for transpiling parentheses properly
 trait HasPrecedence {
     fn precedence(&self) -> u32;
@@ -738,16 +653,25 @@ where
             }
         }
         Expr::Binary(ref op, ref l, ref r) => {
-            /*match (op, *l.clone(), *r.clone()) {
-                // Attempt to handle uv from most shadertoys
-                (BinaryOp::Div, Expr::Variable(ll), Expr::Variable(rr)) => {
-                    if ll.0 == "fragCoord" && rr.0 == "iResolution" {
-                        let _ = f.write_str("i.uv");
-                        return;
-                    }
+            // handle mat mult
+            if *op == BinaryOp::Mult {
+                let mat = 
+                    if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **l {
+                        is_matrix(id.0.as_str())
+                    } else if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **r {
+                        is_matrix(id.0.as_str())
+                    } else {
+                        false
+                    };
+                if mat {
+                    let _ = f.write_str("mul(");
+                    show_expr(f, &l);
+                    let _ = f.write_str(",");
+                    show_expr(f, &r);
+                    let _ = f.write_str(")");
+                    return;
                 }
-                _ => {}
-            };*/
+            }
 
             // Note: all binary ops are left-to-right associative (<= for left part)
             if l.precedence() <= op.precedence() {
@@ -790,6 +714,32 @@ where
             }
         }
         Expr::Assignment(ref v, ref op, ref e) => {
+            // add mat assignment
+            if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
+                if is_matrix(id.0.as_str()) {
+                    add_mat(id.0.clone());
+                }
+            }
+
+            // handle mat mult
+            if *op == AssignmentOp::Mult {
+                let mat = 
+                    if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
+                        is_matrix(id.0.as_str())
+                    } else {
+                        false
+                    };
+                if mat {
+                    show_expr(f, &v); //TODO: Precedence
+                    let _ = f.write_str(" = mul(");
+                    show_expr(f, &e);
+                    let _ = f.write_str(",");
+                    show_expr(f, &v);
+                    let _ = f.write_str(")");
+                    return;
+                }
+            }
+
             // Note: all assignment ops are right-to-left associative
 
             if v.precedence() < op.precedence() {
@@ -1124,7 +1074,7 @@ where
                 "texture" => "tex2D",
                 "tex2DLod" => "tex2Dlod",
                 "refrac" => "refract",
-                "mod" => "glsl_mod", // TODO: Handle further up
+                "mod" => "glsl_mod",
                 "atan" => "atan2",
 
                 a => a,
@@ -1133,7 +1083,7 @@ where
     }
 }
 
-pub fn show_declaration<F>(f: &mut F, d: &Declaration, newline: bool)
+pub fn show_declaration<F>(f: &mut F, d: &Declaration, newline: bool, global: bool)
 where
     F: Write,
 {
@@ -1143,6 +1093,9 @@ where
             let _ = f.write_str(";");
         }
         Declaration::InitDeclaratorList(ref list) => {
+            if global {
+                f.write_str("static ");
+            }
             show_init_declarator_list(f, &list);
             let _ = f.write_str(";");
         }
@@ -1237,6 +1190,25 @@ pub fn show_init_declarator_list<F>(f: &mut F, i: &InitDeclaratorList)
 where
     F: Write,
 {
+    let mat = match i.head.ty.ty.ty {
+        TypeSpecifierNonArray::Mat2 | TypeSpecifierNonArray::Mat3 | TypeSpecifierNonArray::Mat4 |
+        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::Mat24 |
+        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::Mat34 |
+        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::Mat43 => true,
+        TypeSpecifierNonArray::DMat2 | TypeSpecifierNonArray::DMat3 | TypeSpecifierNonArray::DMat4 |
+        TypeSpecifierNonArray::DMat23 | TypeSpecifierNonArray::DMat24 |
+        TypeSpecifierNonArray::DMat32 | TypeSpecifierNonArray::DMat34 |
+        TypeSpecifierNonArray::DMat42 | TypeSpecifierNonArray::DMat43 => true,
+        _ => false
+    };
+
+    if mat {
+        add_mat(i.head.name.clone().unwrap().0);
+        for decl in &i.tail {
+            add_mat(decl.ident.ident.0.clone());
+        }
+    }
+
     show_single_declaration(f, &i.head);
 
     for decl in &i.tail {
@@ -1326,8 +1298,10 @@ where
     F: Write,
 {
     show_function_prototype(f, &fd.prototype);
+    push_mat();
     let _ = f.write_str("\n");
     show_compound_statement(f, &fd.statement, true);
+    pop_mat();
 }
 
 pub fn show_compound_statement<F>(f: &mut F, cst: &CompoundStatement, whitespace : bool)
@@ -1364,7 +1338,7 @@ where
     if whitespace { let _ = f.write_str(get_indent().as_str()); }
 
     match *sst {
-        SimpleStatement::Declaration(ref d) => show_declaration(f, d, true),
+        SimpleStatement::Declaration(ref d) => show_declaration(f, d, true, false),
         SimpleStatement::Expression(ref e) => show_expression_statement(f, e),
         SimpleStatement::Selection(ref s) => show_selection_statement(f, s),
         SimpleStatement::Switch(ref s) => show_switch_statement(f, s),
@@ -1515,7 +1489,7 @@ where
                 show_expr(f, e);
             }
         }
-        ForInitStatement::Declaration(ref d) => show_declaration(f, d, false),
+        ForInitStatement::Declaration(ref d) => show_declaration(f, d, false, false),
     }
 }
 
@@ -1590,6 +1564,18 @@ where
             ref ident,
             ref value,
         } => {
+            // TODO: Pls refactor
+            let value = match value.as_str() {
+                "iTime" => "_Time.y",
+                "iTimeDelta" => "unity_DeltaTime.x",
+                "iChannel0" => "_MainTex",
+                "iChannel1" => "_SecondTex",
+                "iChannel2" => "_ThirdTex",
+                "iChannel3" => "_FourthTex",
+                //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
+                a => a,
+            };
+
             let _ = write!(f, "#define {} {}\n", ident, value);
         }
 
@@ -1607,6 +1593,17 @@ where
                     let _ = write!(f, ", {}", arg);
                 }
             }
+
+            let value = match value.as_str() {
+                "iTime" => "_Time.y",
+                "iTimeDelta" => "unity_DeltaTime.x",
+                "iChannel0" => "_MainTex",
+                "iChannel1" => "_SecondTex",
+                "iChannel2" => "_ThirdTex",
+                "iChannel3" => "_FourthTex",
+                //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
+                a => a,
+            };
 
             let _ = write!(f, ") {}\n", value);
         }
@@ -1771,7 +1768,7 @@ where
             show_function_definition(f, fd);
             let _ = f.write_str("\n");
         }
-        ExternalDeclaration::Declaration(ref d) => show_declaration(f, d, true),
+        ExternalDeclaration::Declaration(ref d) => show_declaration(f, d, true, true),
     }
 }
 
@@ -1830,10 +1827,14 @@ Shader \"Converted/Template\"
 ",
     );
 
+    push_mat();
+
     for ed in &(tu.0).0 {
         match ed {
             ExternalDeclaration::FunctionDefinition(fdef) => {
                 if fdef.prototype.name.0.as_str() == "mainImage" {
+                    push_mat();
+
                     let frag = match &fdef.prototype.parameters[0] {
                         FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
                         _ => panic!()
@@ -1862,6 +1863,8 @@ Shader \"Converted/Template\"
                     sub_indent();
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("}\n");
+
+                    pop_mat();
                 } else {
                     show_external_declaration(f, ed);
                 }
