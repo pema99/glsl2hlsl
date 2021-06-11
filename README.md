@@ -7,6 +7,7 @@ Don't look at the code, seriously you will have an aneurism
 # Need to implement
 - Better typechecking for other types than matrices
 - Refactor omfg
+- Multiline macros
 
 # Build
 `cargo build`
