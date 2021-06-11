@@ -5,8 +5,8 @@ Y'all ever write your entire transpiler as a single 2000 line file
 Don't look at the code, seriously you will have an aneurism
 
 # Need to implement
-- Better handling for preprocessor defines
-- texelFetch, floatBitsToInt, intBitsToFloat
+- Better typechecking for other types than matrices
+- Refactor omfg
 
 # Build
 `cargo build`
