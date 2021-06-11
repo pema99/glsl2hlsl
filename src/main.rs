@@ -1233,7 +1233,34 @@ pub fn show_function_prototype<F>(f: &mut F, fp: &FunctionPrototype)
 where
     F: Write,
 {
+    // Add function prototypes to matrix lookup tab
+    let mat = match fp.ty.ty.ty {
+        TypeSpecifierNonArray::Mat2
+        | TypeSpecifierNonArray::Mat3
+        | TypeSpecifierNonArray::Mat4
+        | TypeSpecifierNonArray::Mat23
+        | TypeSpecifierNonArray::Mat24
+        | TypeSpecifierNonArray::Mat32
+        | TypeSpecifierNonArray::Mat34
+        | TypeSpecifierNonArray::Mat42
+        | TypeSpecifierNonArray::Mat43 => true,
+        TypeSpecifierNonArray::DMat2
+        | TypeSpecifierNonArray::DMat3
+        | TypeSpecifierNonArray::DMat4
+        | TypeSpecifierNonArray::DMat23
+        | TypeSpecifierNonArray::DMat24
+        | TypeSpecifierNonArray::DMat32
+        | TypeSpecifierNonArray::DMat34
+        | TypeSpecifierNonArray::DMat42
+        | TypeSpecifierNonArray::DMat43 => true,
+        _ => false,
+    };
+    if mat {
+        add_mat(fp.name.0.clone());
+    }
+
     show_fully_specified_type(f, &fp.ty);
+
     let _ = f.write_str(" ");
     show_identifier(f, &fp.name);
 
