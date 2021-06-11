@@ -93,6 +93,7 @@ fn process_macros(s: String) -> (String, HashMap<usize, String>) {
             defs.insert(i, rep);
         } else {
             buff.push_str(line);
+            buff.push_str("\n");
         }
     }
 
@@ -107,7 +108,11 @@ fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
         let trimmed = line.trim_start();
 
         if trimmed.starts_with("float __LINE") || trimmed.starts_with("static float __LINE") {
-            let skip = if trimmed.starts_with("static") { 19 } else { 12 };
+            let skip = if trimmed.starts_with("static") {
+                19
+            } else {
+                12
+            };
             let num: usize = trimmed
                 .chars()
                 .skip(skip)
@@ -120,8 +125,7 @@ fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
             if let Some(rep) = defs.get(&num) {
                 buff.push_str(rep.as_str().trim_start());
             }
-        }
-        else {
+        } else {
             buff.push_str(line);
             buff.push_str("\n");
         }
