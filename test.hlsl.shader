@@ -317,7 +317,7 @@ Shader "Converted/Template"
                 float3 col = float3(0.5, 0.8, 0.9)-max(rd.y, 0.)*0.5;
                 float2 uv = 1.5*rd.xz/rd.y;
                 float cl = 1.*(sin(uv.x)+sin(uv.y));
-                uv *= float2x2(0.8, 0.6, -0.6, 0.8)*2.1;
+                uv = mul(float2x2(0.8, 0.6, -0.6, 0.8)*2.1,uv);
                 cl += 0.5*(sin(uv.x)+sin(uv.y));
                 col += 0.1*(-1.+2.*smoothstep(-0.1, 0.1, cl-0.4));
                 col = lerp(col, float3(0.5, 0.7, 0.9), exp(-10.*max(rd.y, 0.)));
@@ -447,7 +447,6 @@ Shader "Converted/Template"
                 float2 q = fragCoord/iResolution.xy;
                 tot *= 0.5+0.5*pow(16.*q.x*q.y*(1.-q.x)*(1.-q.y), 0.25);
                 fragColor = float4(tot, 1.);
-                float3 aaa = float3(3., 3., 3.);
                 return fragColor;
             }
 

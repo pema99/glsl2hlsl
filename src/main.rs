@@ -7,8 +7,7 @@ use glsl::syntax::*;
 
 // TODO:
 // Refactor geez
-// Better typechecking, edge case with mat mult
-// Propagate mats
+// Better typechecking, more than mats
 
 // ---- Setup ----
 fn main() {
@@ -141,13 +140,35 @@ fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
 }
 
 // Is it a matrix?
-fn is_matrix(s: &str) -> bool {
+fn is_matrix_id(s: &str) -> bool {
     match s {
         "mat2" | "mat3" | "mat4" | "mat2x2" | "mat2x3" | "mat2x4" | "mat3x2" | "mat3x3"
         | "mat3x4" | "mat4x2" | "mat4x3" | "mat4x4" => true,
         "float2x2" | "float3x3" | "float4x4" | "float2x3" | "float2x4" | "float3x2"
         | "float3x4" | "float4x2" | "float4x3" => true,
         _ => lookup_mat(s),
+    }
+}
+
+fn is_matrix(e: &Expr) -> bool {
+    match *e {
+        Expr::Variable(ref i) => is_matrix_id(i.0.as_str()),
+        Expr::IntConst(ref _x) => false,
+        Expr::UIntConst(ref _x) => false,
+        Expr::BoolConst(ref _x) => false,
+        Expr::FloatConst(ref _x) => false,
+        Expr::DoubleConst(ref _x) => false,
+        Expr::Unary(ref _op, ref e) => is_matrix(e),
+        Expr::Binary(ref _op, ref l, ref r) => is_matrix(l) || is_matrix(r),
+        Expr::Ternary(ref _c, ref s, ref e) => is_matrix(s) || is_matrix(e),
+        Expr::Assignment(ref _v, ref _op, ref e) => is_matrix(e),
+        Expr::Bracket(ref _e, ref _a) => false,
+        Expr::FunCall(FunIdentifier::Identifier(ref id), ref _args) => is_matrix_id(id.0.as_str()),
+        Expr::Dot(ref _e, ref i) => is_matrix_id(i.0.as_str()),
+        Expr::PostInc(ref e) => is_matrix(e),
+        Expr::PostDec(ref e) => is_matrix(e),
+        Expr::Comma(ref _a, ref b) => is_matrix(b),
+        _ => false
     }
 }
 
@@ -718,15 +739,11 @@ where
         Expr::Binary(ref op, ref l, ref r) => {
             // handle mat mult
             if *op == BinaryOp::Mult {
-                let should_replace = |l: &Box<Expr>| match **l {
-                    Expr::FunCall(FunIdentifier::Identifier(ref id), _) | Expr::Variable(ref id) => is_matrix(id.0.as_str()),
-                    _ => false
-                };
                 let is_scalar = |l: &Box<Expr>| match **l {
                     Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
                     _ => false
                 };
-                if (!is_scalar(l) && !is_scalar(r)) && (should_replace(l) || should_replace(r)) {
+                if (!is_scalar(l) && !is_scalar(r)) && (is_matrix(l) || is_matrix(r)) {
                     let _ = f.write_str("mul(");
                     show_expr(f, &l);
                     let _ = f.write_str(",");
@@ -779,22 +796,18 @@ where
         Expr::Assignment(ref v, ref op, ref e) => {
             // add mat assignment
             if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
-                if is_matrix(id.0.as_str()) {
+                if is_matrix_id(id.0.as_str()) {
                     add_mat(id.0.clone());
                 }
             }
 
             // handle mat mult
             if *op == AssignmentOp::Mult {
-                let should_replace = |l: &Box<Expr>| match **l {
-                    Expr::FunCall(FunIdentifier::Identifier(ref id), _) | Expr::Variable(ref id) => is_matrix(id.0.as_str()),
-                    _ => false
-                };
                 let is_scalar = |l: &Box<Expr>| match **l {
                     Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
                     _ => false
                 };
-                if should_replace(e) && !is_scalar(e) {
+                if is_matrix(e) && !is_scalar(e) {
                     show_expr(f, &v); //TODO: Precedence
                     let _ = f.write_str(" = mul(");
                     show_expr(f, &e);

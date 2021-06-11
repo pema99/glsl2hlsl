@@ -507,6 +507,4 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 
     // output    
     fragColor = vec4( tot, 1.0 );
-
-    vec3 aaa = vec3(3.);
 }
