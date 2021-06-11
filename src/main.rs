@@ -6,9 +6,9 @@ use glsl::parser::Parse as _;
 use glsl::syntax::*;
 
 // TODO:
-// Better handling for defines, have a replacement table
 // Refactor geez
-// texelFetch, floatBitsToInt, intBitsToFloat
+// Better typechecking, edge case with mat mult
+// Propagate mats
 
 // ---- Setup ----
 fn main() {
@@ -74,7 +74,13 @@ fn pop_mat() {
     }
 }
 fn lookup_mat(name: &str) -> bool {
-    unsafe { MAT_TABLE.last().unwrap().contains(name) }
+    unsafe {
+        if let Some(v) = MAT_TABLE.last() {
+            v.contains(name)
+        } else {
+            false
+        }
+    }
 }
 
 // ---- Transpilation code ----
@@ -217,6 +223,7 @@ where
         "iChannel2" => "_ThirdTex",
         "iChannel3" => "_FourthTex",
         "gl_FragCoord" => "i.uv",
+        "iMouse" => "_Mouse",
         //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
         a => a,
     };
@@ -711,14 +718,15 @@ where
         Expr::Binary(ref op, ref l, ref r) => {
             // handle mat mult
             if *op == BinaryOp::Mult {
-                let mat = if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **l {
-                    is_matrix(id.0.as_str())
-                } else if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **r {
-                    is_matrix(id.0.as_str())
-                } else {
-                    false
+                let should_replace = |l: &Box<Expr>| match **l {
+                    Expr::FunCall(FunIdentifier::Identifier(ref id), _) | Expr::Variable(ref id) => is_matrix(id.0.as_str()),
+                    _ => false
                 };
-                if mat {
+                let is_scalar = |l: &Box<Expr>| match **l {
+                    Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
+                    _ => false
+                };
+                if (!is_scalar(l) && !is_scalar(r)) && (should_replace(l) || should_replace(r)) {
                     let _ = f.write_str("mul(");
                     show_expr(f, &l);
                     let _ = f.write_str(",");
@@ -778,12 +786,15 @@ where
 
             // handle mat mult
             if *op == AssignmentOp::Mult {
-                let mat = if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
-                    is_matrix(id.0.as_str())
-                } else {
-                    false
+                let should_replace = |l: &Box<Expr>| match **l {
+                    Expr::FunCall(FunIdentifier::Identifier(ref id), _) | Expr::Variable(ref id) => is_matrix(id.0.as_str()),
+                    _ => false
                 };
-                if mat {
+                let is_scalar = |l: &Box<Expr>| match **l {
+                    Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
+                    _ => false
+                };
+                if should_replace(e) && !is_scalar(e) {
                     show_expr(f, &v); //TODO: Precedence
                     let _ = f.write_str(" = mul(");
                     show_expr(f, &e);
@@ -834,7 +845,7 @@ where
             show_function_identifier(&mut id, &fun);
 
             // Deal with single value vector constructors
-            let expected_arity: isize = match id.as_str() {
+            let expected_arity = match id.as_str() {
                 "bool2" => 2,
                 "bool3" => 3,
                 "bool4" => 4,
@@ -850,11 +861,25 @@ where
                 "float2" => 2,
                 "float3" => 3,
                 "float4" => 4,
+                "float2x2" => 4,
+                "float3x3" => 9,
+                "float4x4" => 16,
+                "float2x3" => 6,
+                "float2x4" => 8,
+                "float3x2" => 6,
+                "float3x4" => 12,
+                "float4x2" => 8,
+                "float4x3" => 12,
                 _ => -1,
             };
-            if expected_arity >= 0 && args.len() == 1 && expected_arity != 1 {
+            if expected_arity != -1 && args.len() == 1 {
+                let _ = f.write_str(id.as_str());
                 let _ = f.write_str("(");
                 show_expr(f, &args[0]);
+                for _ in 1..expected_arity {
+                    let _ = f.write_str(", ");
+                    show_expr(f, &args[0]);
+                }
                 let _ = f.write_str(")");
             } else {
                 // Normal handling
@@ -1132,6 +1157,8 @@ where
                 "refrac" => "refract",
                 "mod" => "glsl_mod",
                 "atan" => "atan2",
+                "floatBitsToInt" => "asint",
+                "intBitsToFloat" => "asfloat",
 
                 a => a,
             });
@@ -1663,19 +1690,16 @@ where
                 }
             }
 
-            let value = match value.as_str() {
-                "iTime" => "_Time.y",
-                "iTimeDelta" => "unity_DeltaTime.x",
-                "iChannel0" => "_MainTex",
-                "iChannel1" => "_SecondTex",
-                "iChannel2" => "_ThirdTex",
-                "iChannel3" => "_FourthTex",
-                "gl_FragCoord" => "i.uv",
-                //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
-                a => a,
-            };
+            let mut res = String::from(value);
+            if let Ok(stmt) = Statement::parse(value) {
+                res.clear();
+                show_statement(&mut res, &stmt, true);
+            } else if let Ok(expr) = Expr::parse(value) {
+                res.clear();
+                show_expr(&mut res, &expr);
+            }
 
-            let _ = write!(f, ") {}\n", value);
+            let _ = write!(f, ") {}\n", res);
         }
     }
 }
@@ -1856,6 +1880,7 @@ Shader \"Converted/Template\"
         _SecondTex (\"iChannel1\", 2D) = \"white\" {}
         _ThirdTex (\"iChannel2\", 2D) = \"white\" {}
         _FourthTex (\"iChannel3\", 2D) = \"white\" {}
+        _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
     }
     SubShader
     {
@@ -1879,13 +1904,17 @@ Shader \"Converted/Template\"
                 float4 vertex : SV_POSITION;
             };
 
-            sampler2D _MainTex;
-            sampler2D _SecondTex;
-            sampler2D _ThirdTex;
-            sampler2D _FourthTex;
+            sampler2D _MainTex;   float4 _MainTex_TexelSize;
+            sampler2D _SecondTex; float4 _SecondTex_TexelSize;
+            sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
+            sampler2D _FourthTex; float4 _FourthTex_TexelSize;
+            float4 _Mouse;
 
-            #define iMouse float2(_Time.y, _Time.y)
-            #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y)))) 
+            // GLSL Compatability macros
+            #define iFrame (floor(_Time.y / 60))
+            #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
+            #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
+            #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
 
             v2f vert (appdata v)
             {
