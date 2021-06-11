@@ -1,6 +1,6 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::iter;
-use std::collections::HashSet;
 
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
@@ -21,12 +21,17 @@ fn main() {
     let path = std::path::Path::new(args[1].as_str());
     let glsl = std::fs::read_to_string(path).expect("Error reading file");
 
+    // Preprocessor step
+    let (glsl, defs) = process_macros(glsl);
+
     let stage = ShaderStage::parse(glsl);
     match &stage {
         Err(a) => println!("Err: {}", a.info),
         _ => {
             let mut s = String::new();
             show_translation_unit(&mut s, &stage.unwrap());
+            s = replace_macros(s, defs);
+
             let mut arg = args[1].clone();
             arg.push_str(".shader");
             let path = std::path::Path::new(arg.as_str());
@@ -37,8 +42,16 @@ fn main() {
 
 // I'm gonna burn in hell for this
 static mut INDENT_LEVEL: usize = 3;
-fn add_indent() { unsafe { INDENT_LEVEL += 1; } }
-fn sub_indent() { unsafe { INDENT_LEVEL -= 1; } }
+fn add_indent() {
+    unsafe {
+        INDENT_LEVEL += 1;
+    }
+}
+fn sub_indent() {
+    unsafe {
+        INDENT_LEVEL -= 1;
+    }
+}
 fn get_indent() -> String {
     unsafe { iter::repeat("    ").take(INDENT_LEVEL).collect::<String>() }
 }
@@ -46,26 +59,85 @@ fn get_indent() -> String {
 // And even more for this
 static mut MAT_TABLE: Vec<HashSet<String>> = Vec::new();
 fn add_mat(name: String) {
-    unsafe { MAT_TABLE.last_mut().unwrap().insert(name); }
+    unsafe {
+        MAT_TABLE.last_mut().unwrap().insert(name);
+    }
 }
 fn push_mat() {
-    unsafe { MAT_TABLE.push(HashSet::new()); }
+    unsafe {
+        MAT_TABLE.push(HashSet::new());
+    }
 }
 fn pop_mat() {
-    unsafe { MAT_TABLE.pop(); }
+    unsafe {
+        MAT_TABLE.pop();
+    }
 }
 fn lookup_mat(name: &str) -> bool {
     unsafe { MAT_TABLE.last().unwrap().contains(name) }
 }
 
 // ---- Transpilation code ----
+// Need this hack in an attempt to support the preprocessor since GLSL
+// crate doesn't really support it.
+fn process_macros(s: String) -> (String, HashMap<usize, String>) {
+    let mut buff = String::new();
+    let mut defs: HashMap<usize, String> = HashMap::new();
+
+    for (i, line) in s.lines().enumerate() {
+        if line.trim_start().starts_with("#") {
+            // Marker declaration
+            buff.push_str(format!("float __LINE{}__;\n", i).as_str());
+            let mut rep = String::new();
+            show_preprocessor(&mut rep, &Preprocessor::parse(line.trim_start()).unwrap());
+            defs.insert(i, rep);
+        } else {
+            buff.push_str(line);
+        }
+    }
+
+    (buff, defs)
+}
+
+// Put back macros
+fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
+    let mut buff = String::new();
+
+    for line in s.lines() {
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with("float __LINE") || trimmed.starts_with("static float __LINE") {
+            let skip = if trimmed.starts_with("static") { 19 } else { 12 };
+            let num: usize = trimmed
+                .chars()
+                .skip(skip)
+                .take_while(|a| a.is_numeric())
+                .collect::<String>()
+                .parse()
+                .unwrap();
+
+            // TODO: Keep preceeding whitespace
+            if let Some(rep) = defs.get(&num) {
+                buff.push_str(rep.as_str().trim_start());
+            }
+        }
+        else {
+            buff.push_str(line);
+            buff.push_str("\n");
+        }
+    }
+
+    buff
+}
+
+// Is it a matrix?
 fn is_matrix(s: &str) -> bool {
     match s {
-        "mat2" | "mat3" | "mat4" |"mat2x2" |"mat2x3" |"mat2x4" | 
-        "mat3x2" |"mat3x3" |"mat3x4" |"mat4x2" |"mat4x3" |"mat4x4" => true, 
-        "float2x2" | "float3x3" | "float4x4" | "float2x3" | "float2x4" |
-        "float3x2" | "float3x4" | "float4x2" | "float4x3" => true,
-        _ => lookup_mat(s)
+        "mat2" | "mat3" | "mat4" | "mat2x2" | "mat2x3" | "mat2x4" | "mat3x2" | "mat3x3"
+        | "mat3x4" | "mat4x2" | "mat4x3" | "mat4x4" => true,
+        "float2x2" | "float3x3" | "float4x4" | "float2x3" | "float2x4" | "float3x2"
+        | "float3x4" | "float4x2" | "float4x3" => true,
+        _ => lookup_mat(s),
     }
 }
 
@@ -635,14 +707,13 @@ where
         Expr::Binary(ref op, ref l, ref r) => {
             // handle mat mult
             if *op == BinaryOp::Mult {
-                let mat = 
-                    if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **l {
-                        is_matrix(id.0.as_str())
-                    } else if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **r {
-                        is_matrix(id.0.as_str())
-                    } else {
-                        false
-                    };
+                let mat = if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **l {
+                    is_matrix(id.0.as_str())
+                } else if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **r {
+                    is_matrix(id.0.as_str())
+                } else {
+                    false
+                };
                 if mat {
                     let _ = f.write_str("mul(");
                     show_expr(f, &l);
@@ -703,12 +774,11 @@ where
 
             // handle mat mult
             if *op == AssignmentOp::Mult {
-                let mat = 
-                    if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
-                        is_matrix(id.0.as_str())
-                    } else {
-                        false
-                    };
+                let mat = if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
+                    is_matrix(id.0.as_str())
+                } else {
+                    false
+                };
                 if mat {
                     show_expr(f, &v); //TODO: Precedence
                     let _ = f.write_str(" = mul(");
@@ -779,7 +849,9 @@ where
                 _ => -1,
             };
             if expected_arity >= 0 && args.len() == 1 && expected_arity != 1 {
+                let _ = f.write_str("(");
                 show_expr(f, &args[0]);
+                let _ = f.write_str(")");
             } else {
                 // Normal handling
                 let _ = f.write_str(id.as_str());
@@ -1171,15 +1243,25 @@ where
     F: Write,
 {
     let mat = match i.head.ty.ty.ty {
-        TypeSpecifierNonArray::Mat2 | TypeSpecifierNonArray::Mat3 | TypeSpecifierNonArray::Mat4 |
-        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::Mat24 |
-        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::Mat34 |
-        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::Mat43 => true,
-        TypeSpecifierNonArray::DMat2 | TypeSpecifierNonArray::DMat3 | TypeSpecifierNonArray::DMat4 |
-        TypeSpecifierNonArray::DMat23 | TypeSpecifierNonArray::DMat24 |
-        TypeSpecifierNonArray::DMat32 | TypeSpecifierNonArray::DMat34 |
-        TypeSpecifierNonArray::DMat42 | TypeSpecifierNonArray::DMat43 => true,
-        _ => false
+        TypeSpecifierNonArray::Mat2
+        | TypeSpecifierNonArray::Mat3
+        | TypeSpecifierNonArray::Mat4
+        | TypeSpecifierNonArray::Mat23
+        | TypeSpecifierNonArray::Mat24
+        | TypeSpecifierNonArray::Mat32
+        | TypeSpecifierNonArray::Mat34
+        | TypeSpecifierNonArray::Mat42
+        | TypeSpecifierNonArray::Mat43 => true,
+        TypeSpecifierNonArray::DMat2
+        | TypeSpecifierNonArray::DMat3
+        | TypeSpecifierNonArray::DMat4
+        | TypeSpecifierNonArray::DMat23
+        | TypeSpecifierNonArray::DMat24
+        | TypeSpecifierNonArray::DMat32
+        | TypeSpecifierNonArray::DMat34
+        | TypeSpecifierNonArray::DMat42
+        | TypeSpecifierNonArray::DMat43 => true,
+        _ => false,
     };
 
     if mat {
@@ -1284,11 +1366,13 @@ where
     pop_mat();
 }
 
-pub fn show_compound_statement<F>(f: &mut F, cst: &CompoundStatement, whitespace : bool)
+pub fn show_compound_statement<F>(f: &mut F, cst: &CompoundStatement, whitespace: bool)
 where
     F: Write,
 {
-    if whitespace { let _ = f.write_str(get_indent().as_str()); }
+    if whitespace {
+        let _ = f.write_str(get_indent().as_str());
+    }
     let _ = f.write_str("{\n");
     add_indent();
 
@@ -1297,11 +1381,13 @@ where
     }
 
     sub_indent();
-    if whitespace { let _ = f.write_str(get_indent().as_str()); }
+    if whitespace {
+        let _ = f.write_str(get_indent().as_str());
+    }
     let _ = f.write_str("}\n");
 }
 
-pub fn show_statement<F>(f: &mut F, st: &Statement, whitespace : bool)
+pub fn show_statement<F>(f: &mut F, st: &Statement, whitespace: bool)
 where
     F: Write,
 {
@@ -1311,11 +1397,13 @@ where
     }
 }
 
-pub fn show_simple_statement<F>(f: &mut F, sst: &SimpleStatement, whitespace : bool)
+pub fn show_simple_statement<F>(f: &mut F, sst: &SimpleStatement, whitespace: bool)
 where
     F: Write,
 {
-    if whitespace { let _ = f.write_str(get_indent().as_str()); }
+    if whitespace {
+        let _ = f.write_str(get_indent().as_str());
+    }
 
     match *sst {
         SimpleStatement::Declaration(ref d) => show_declaration(f, d, true, false),
@@ -1357,7 +1445,7 @@ where
         SelectionRestStatement::Statement(ref if_st) => {
             let simple = match **if_st {
                 Statement::Simple(_) => true,
-                _ => false
+                _ => false,
             };
             if simple {
                 add_indent();
@@ -1544,20 +1632,16 @@ where
             ref ident,
             ref value,
         } => {
-            // TODO: Pls refactor
-            let value = match value.as_str() {
-                "iTime" => "_Time.y",
-                "iTimeDelta" => "unity_DeltaTime.x",
-                "iChannel0" => "_MainTex",
-                "iChannel1" => "_SecondTex",
-                "iChannel2" => "_ThirdTex",
-                "iChannel3" => "_FourthTex",
-                "gl_FragCoord" => "i.uv",
-                //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
-                a => a,
-            };
+            let mut res = String::from(value);
+            if let Ok(stmt) = Statement::parse(value) {
+                res.clear();
+                show_statement(&mut res, &stmt, true);
+            } else if let Ok(expr) = Expr::parse(value) {
+                res.clear();
+                show_expr(&mut res, &expr);
+            }
 
-            let _ = write!(f, "#define {} {}\n", ident, value);
+            let _ = write!(f, "#define {} {}\n", ident, res);
         }
 
         PreprocessorDefine::FunctionLike {
@@ -1820,11 +1904,11 @@ Shader \"Converted/Template\"
 
                     let frag = match &fdef.prototype.parameters[0] {
                         FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
                     let uv = match &fdef.prototype.parameters[1] {
                         FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     let _ = f.write_str(get_indent().as_str());
