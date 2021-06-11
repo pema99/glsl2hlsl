@@ -75,7 +75,7 @@ fn pop_mat() {
 fn lookup_mat(name: &str) -> bool {
     unsafe {
         if let Some(v) = MAT_TABLE.last() {
-            v.contains(name)
+            v.contains(name) || MAT_TABLE.first().unwrap().contains(name)
         } else {
             false
         }
@@ -379,6 +379,9 @@ where
         }
         TypeSpecifierNonArray::DMat43 => {
             let _ = f.write_str("double4x3");
+        }
+        TypeSpecifierNonArray::Sampler2D => {
+            let _ = f.write_str("sampler2D");
         }
         TypeSpecifierNonArray::Struct(ref s) => show_struct_non_declaration(f, s),
         TypeSpecifierNonArray::TypeName(ref tn) => show_type_name(f, tn),
