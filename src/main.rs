@@ -422,12 +422,17 @@ where
         let _ = write!(f, "{} ", name);
     }
 
+    let _ = f.write_str("\n");
+    let _ = f.write_str(get_indent().as_str());
     let _ = f.write_str("{\n");
 
+    add_indent();
     for field in &s.fields.0 {
         show_struct_field(f, field);
     }
+    sub_indent();
 
+    let _ = f.write_str(get_indent().as_str());
     let _ = f.write_str("}");
 }
 
@@ -443,6 +448,8 @@ pub fn show_struct_field<F>(f: &mut F, field: &StructFieldSpecifier)
 where
     F: Write,
 {
+    let _ = f.write_str(get_indent().as_str());
+
     if let Some(ref qual) = field.qualifier {
         show_type_qualifier(f, &qual);
         let _ = f.write_str(" ");
@@ -898,6 +905,14 @@ where
                 }
                 let _ = f.write_str(")");
             } else {
+                // Handle wierd tex2D overloads
+                /*let mut args = args.clone();
+                if id == "tex2D" && args.len() > 2 {
+                    for i in 2..args.len() {
+                        args.remove(i);
+                    }
+                }*/
+
                 // Normal handling
                 let _ = f.write_str(id.as_str());
                 let _ = f.write_str("(");
@@ -1192,7 +1207,12 @@ where
             let _ = f.write_str(";");
         }
         Declaration::InitDeclaratorList(ref list) => {
-            if global {
+            let invalid_static = match list.head.ty.ty.ty {
+                TypeSpecifierNonArray::Struct(_) => true,
+                TypeSpecifierNonArray::Void => true,
+                _ => false
+            };
+            if global && !invalid_static {
                 let _ = f.write_str("static ");
             }
             show_init_declarator_list(f, &list);
@@ -1416,10 +1436,13 @@ where
     show_type_qualifier(f, &b.qualifier);
     let _ = f.write_str(" ");
     show_identifier(f, &b.name);
-    let _ = f.write_str(" {");
+    let _ = f.write_str("\n");
+    let _ = f.write_str(get_indent().as_str());
+    let _ = f.write_str("{");
 
     for field in &b.fields {
         show_struct_field(f, field);
+
         let _ = f.write_str("\n");
     }
     let _ = f.write_str("}");
