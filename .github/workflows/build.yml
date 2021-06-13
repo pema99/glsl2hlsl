@@ -7,8 +7,10 @@ jobs:
   build:
     container:
       image: amedeedaboville/rust-wasm
+      env:
+        RUST_VERSION: "nightly"
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v2
