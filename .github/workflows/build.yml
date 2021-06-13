@@ -6,10 +6,18 @@ on:
 jobs:
   build:
     container:
-      image: davesque/rust-node
+      image: rustlang/rust:nightly
     runs-on: ubuntu-latest
 
+
+
     steps:
+      - name: Install Dependencies
+        run: |
+          curl -sL https://deb.nodesource.com/setup_13.x | bash - \
+                && apt-get install -y nodejs
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          
       - name: Checkout
         uses: actions/checkout@v2
 
