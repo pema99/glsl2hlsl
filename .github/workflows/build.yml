@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Install Dependencies
         run: |
-          curl -sL https://deb.nodesource.com/setup_13.x | bash - \
+          curl -sL https://deb.nodesource.com/setup_14.x | bash - \
                 && apt-get install -y nodejs
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           
@@ -27,6 +27,7 @@ jobs:
           cd glsl2hlsl-wasm
           wasm-pack build
           cd www
+          npm install
           npm run build
 
       - name: Upload Artifacts
