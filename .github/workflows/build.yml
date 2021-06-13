@@ -6,9 +6,7 @@ on:
 jobs:
   build:
     container:
-      image: amedeedaboville/rust-wasm
-      env:
-        RUST_VERSION: "nightly"
+      image: davesque/rust-node
     runs-on: ubuntu-latest
 
     steps:
