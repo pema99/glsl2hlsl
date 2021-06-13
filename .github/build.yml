@@ -1,0 +1,26 @@
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build
+        uses: docker://amedeedaboville/rust-wasm
+        run: |
+          cargo build
+          cd glsl2hlsl-wasm
+          wasm-pack build
+          cd www
+          npm run build
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: website
+          path: ./
+          
