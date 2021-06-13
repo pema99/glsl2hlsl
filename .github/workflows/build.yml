@@ -35,6 +35,5 @@ jobs:
         with:
           name: website
           path: |
-            ./
-            !node_modules/
+            glsl2hlsl-wasm/www/dist/
           
