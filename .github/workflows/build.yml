@@ -36,4 +36,10 @@ jobs:
           name: website
           path: |
             glsl2hlsl-wasm/www/dist/
-          
+
+      - name: Trigger Github Pages
+        uses: actions/repository-dispatch
+        with:
+          token: ¤{{ secrets.PEMA_ACCESS_TOKEN }}
+          event-type: update-glsl2hlsl-website
+          repository: pema99/pema99.github.io
