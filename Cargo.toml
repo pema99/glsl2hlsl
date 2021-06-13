@@ -8,3 +8,7 @@ edition = "2018"
 
 [dependencies]
 glsl = "*"
+
+
+[workspace]
+members=["glsl2hlsl-wasm"]
