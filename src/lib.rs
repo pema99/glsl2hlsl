@@ -1763,20 +1763,35 @@ pub fn show_preprocessor_define<F>(f: &mut F, pd: &PreprocessorDefine)
 where
     F: Write,
 {
+    let handle_define = |ident: &Identifier, value: &String| {
+        let mut res = String::from(value);
+        if let Ok(stmt) = Statement::parse(value) {
+            res.clear();
+            if let Statement::Simple(s) = &stmt {
+                if let SimpleStatement::Expression(Some(ref e)) = **s {
+                    if is_matrix(&e) {
+                        add_mat(ident.0.clone())
+                    }
+                }
+            }
+            show_statement(&mut res, &stmt, true);
+        } else if let Ok(expr) = Expr::parse(value) {
+            res.clear();
+            if is_matrix(&expr) {
+                add_mat(ident.0.clone())
+            }
+            show_expr(&mut res, &expr);
+        }
+        res
+    };
+
     // TODO: Defines
     match *pd {
         PreprocessorDefine::ObjectLike {
             ref ident,
             ref value,
         } => {
-            let mut res = String::from(value);
-            if let Ok(stmt) = Statement::parse(value) {
-                res.clear();
-                show_statement(&mut res, &stmt, true);
-            } else if let Ok(expr) = Expr::parse(value) {
-                res.clear();
-                show_expr(&mut res, &expr);
-            }
+            let res = handle_define(ident, value);
 
             let _ = write!(f, "#define {} {}\n", ident, res);
         }
@@ -1796,14 +1811,7 @@ where
                 }
             }
 
-            let mut res = String::from(value);
-            if let Ok(stmt) = Statement::parse(value) {
-                res.clear();
-                show_statement(&mut res, &stmt, true);
-            } else if let Ok(expr) = Expr::parse(value) {
-                res.clear();
-                show_expr(&mut res, &expr);
-            }
+            let res = handle_define(ident, value);
 
             let _ = write!(f, ") {}\n", res);
         }
