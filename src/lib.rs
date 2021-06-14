@@ -1184,6 +1184,7 @@ where
                 "dFdy" | "dFdyCoarse" => "ddy",
                 "dFdxFine" => "ddx_fine",
                 "dFdyFine" => "ddy_fine",
+                "inversesqrt" => "rsqrt",
 
                 a => a,
             });
