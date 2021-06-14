@@ -1476,14 +1476,19 @@ where
     for p in out_params {
         match p {
             FunctionParameterDeclaration::Named(_, decl) => {
-                let assign = Statement::Simple(Box::new(SimpleStatement::Expression(Some(
-                    Expr::Assignment(
-                        Box::new(Expr::Variable(decl.ident.ident.clone())),
-                        AssignmentOp::Equal,
-                        Box::new(Expr::IntConst(0)),
-                    ),
-                ))));
-                stmts.statement_list.insert(0, assign);
+                match decl.ty.ty {
+                    TypeSpecifierNonArray::Struct(_) | TypeSpecifierNonArray::TypeName(_) => {},
+                    _ => {
+                        let assign = Statement::Simple(Box::new(SimpleStatement::Expression(Some(
+                            Expr::Assignment(
+                                Box::new(Expr::Variable(decl.ident.ident.clone())),
+                                AssignmentOp::Equal,
+                                Box::new(Expr::IntConst(0)),
+                            ),
+                        ))));
+                        stmts.statement_list.insert(0, assign);
+                    }
+                }
             }
             _ => unreachable!(),
         }
