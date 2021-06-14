@@ -15,7 +15,7 @@ pub fn transpile(input: String) -> String {
 
     let stage = ShaderStage::parse(glsl);
     match &stage {
-        Err(a) => "Error".to_owned(),
+        Err(a) => a.info.clone(),
         _ => {
             let mut s = String::new();
             show_translation_unit(&mut s, &stage.unwrap());
