@@ -2067,7 +2067,6 @@ Shader \"Converted/Template\"
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float2 {} = i.uv;\n", uv));
-                    let _ = f.write_str(get_indent().as_str());
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
