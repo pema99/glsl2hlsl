@@ -15,9 +15,7 @@ pub fn transpile(input: String) -> String {
 
     let stage = ShaderStage::parse(glsl);
     match &stage {
-        Err(a) => {
-            "Error".to_owned()
-        },
+        Err(a) => "Error".to_owned(),
         _ => {
             let mut s = String::new();
             show_translation_unit(&mut s, &stage.unwrap());
@@ -155,7 +153,7 @@ fn is_matrix(e: &Expr) -> bool {
         Expr::PostInc(ref e) => is_matrix(e),
         Expr::PostDec(ref e) => is_matrix(e),
         Expr::Comma(ref _a, ref b) => is_matrix(b),
-        _ => false
+        _ => false,
     }
 }
 
@@ -738,7 +736,7 @@ where
             if *op == BinaryOp::Mult {
                 let is_scalar = |l: &Box<Expr>| match **l {
                     Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
-                    _ => false
+                    _ => false,
                 };
                 if (!is_scalar(l) && !is_scalar(r)) && (is_matrix(l) || is_matrix(r)) {
                     let _ = f.write_str("mul(");
@@ -802,7 +800,7 @@ where
             if *op == AssignmentOp::Mult {
                 let is_scalar = |l: &Box<Expr>| match **l {
                     Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
-                    _ => false
+                    _ => false,
                 };
                 if is_matrix(e) && !is_scalar(e) {
                     show_expr(f, &v); //TODO: Precedence
@@ -854,6 +852,11 @@ where
             let mut id = String::new();
             show_function_identifier(&mut id, &fun);
 
+            // Handle atan2 overload
+            if id == "atan2" && args.len() == 1 {
+                id = String::from("atan");
+            }
+
             // Deal with single value vector constructors
             let expected_arity = match id.as_str() {
                 "bool2" => 2,
@@ -883,22 +886,22 @@ where
                 _ => -1,
             };
             if expected_arity != -1 && args.len() == 1 {
-                let _ = f.write_str(id.as_str());
+                //let _ = f.write_str(id.as_str());
                 let _ = f.write_str("(");
                 show_expr(f, &args[0]);
-                for _ in 1..expected_arity {
+                /*for _ in 1..expected_arity {
                     let _ = f.write_str(", ");
                     show_expr(f, &args[0]);
-                }
+                }*/
                 let _ = f.write_str(")");
             } else {
                 // Handle wierd tex2D overloads
-                /*let mut args = args.clone();
+                let mut args = args.clone();
                 if id == "tex2D" && args.len() > 2 {
                     for i in 2..args.len() {
                         args.remove(i);
                     }
-                }*/
+                }
 
                 // Normal handling
                 let _ = f.write_str(id.as_str());
@@ -1197,7 +1200,7 @@ where
             let invalid_static = match list.head.ty.ty.ty {
                 TypeSpecifierNonArray::Struct(_) => true,
                 TypeSpecifierNonArray::Void => true,
-                _ => false
+                _ => false,
             };
             if global && !invalid_static {
                 let _ = f.write_str("static ");
@@ -1443,10 +1446,50 @@ pub fn show_function_definition<F>(f: &mut F, fd: &FunctionDefinition)
 where
     F: Write,
 {
+    // Find parameters that are marked 'out'
+    let out_params = &fd
+        .prototype
+        .parameters
+        .iter()
+        .filter(|x| match x {
+            FunctionParameterDeclaration::Named(Some(ty), _) => {
+                ty.qualifiers
+                    .0
+                    .iter()
+                    .filter(|y| match y {
+                        TypeQualifierSpec::Storage(StorageQualifier::Out) => true,
+                        _ => false,
+                    })
+                    .count()
+                    > 0
+            }
+            _ => false,
+        })
+        .collect::<Vec<_>>();
+
+    // Make sure they are initialized
+    let mut stmts = fd.statement.clone();
+    for p in out_params {
+        match p {
+            FunctionParameterDeclaration::Named(_, decl) => {
+                let assign = Statement::Simple(Box::new(SimpleStatement::Expression(Some(
+                    Expr::Assignment(
+                        Box::new(Expr::Variable(decl.ident.ident.clone())),
+                        AssignmentOp::Equal,
+                        Box::new(Expr::IntConst(0)),
+                    ),
+                ))));
+                stmts.statement_list.insert(0, assign);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // Show function
     show_function_prototype(f, &fd.prototype);
     push_mat();
     let _ = f.write_str("\n");
-    show_compound_statement(f, &fd.statement, true);
+    show_compound_statement(f, &stmts, true);
     pop_mat();
 }
 
@@ -1965,6 +2008,7 @@ Shader \"Converted/Template\"
 
             // GLSL Compatability macros
             #define iFrame (floor(_Time.y / 60))
+            #define iResolution float3(1, 1, 1)
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
@@ -2007,7 +2051,6 @@ Shader \"Converted/Template\"
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float2 {} = i.uv;\n", uv));
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float3 iResolution = 1;\n");
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
