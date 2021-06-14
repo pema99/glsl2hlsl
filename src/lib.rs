@@ -1214,9 +1214,9 @@ where
             let _ = f.write_str(";");
         }
         Declaration::Precision(ref qual, ref ty) => {
-            show_precision_qualifier(f, &qual);
+            /*show_precision_qualifier(f, &qual);
             show_type_specifier(f, &ty);
-            let _ = f.write_str(";");
+            let _ = f.write_str(";");*/
         }
         Declaration::Block(ref block) => {
             show_block(f, &block);
