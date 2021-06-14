@@ -158,6 +158,59 @@ fn is_matrix(e: &Expr) -> bool {
     }
 }
 
+fn replace_id(id: &str) -> &str {
+    match id {
+        // Vector types
+        "bvec2" => "bool2",
+        "bvec3" => "bool3",
+        "bvec4" => "bool4",
+        "ivec2" => "int2",
+        "ivec3" => "int3",
+        "ivec4" => "int4",
+        "uvec2" => "uint2",
+        "uvec3" => "uint3",
+        "uvec4" => "uint4",
+        "dvec2" => "double2",
+        "dvec3" => "double3",
+        "dvec4" => "double4",
+        "vec2" => "float2",
+        "vec3" => "float3",
+        "vec4" => "float4",
+
+        //Matrix types
+        "mat2" => "float2x2",
+        "mat3" => "float3x3",
+        "mat4" => "float4x4",
+        "mat2x2" => "float2x2",
+        "mat2x3" => "float2x3",
+        "mat2x4" => "float2x4",
+        "mat3x2" => "float3x2",
+        "mat3x3" => "float3x3",
+        "mat3x4" => "float3x4",
+        "mat4x2" => "float4x2",
+        "mat4x3" => "float4x3",
+        "mat4x4" => "float4x4",
+
+        // Builtins
+        "mix" => "lerp",
+        "fract" => "frac",
+        "texture" => "tex2D",
+        "tex2DLod" => "tex2Dlod",
+        "refrac" => "refract",
+        "mod" => "glsl_mod",
+        "atan" => "atan2",
+        "floatBitsToInt" => "asint",
+        "intBitsToFloat" => "asfloat",
+        "dFdx" | "dFdxCoarse" => "ddx",
+        "dFdy" | "dFdyCoarse" => "ddy",
+        "dFdxFine" => "ddx_fine",
+        "dFdyFine" => "ddy_fine",
+        "inversesqrt" => "rsqrt",
+
+        a => a,
+    }
+}
+
 // Precedence information for transpiling parentheses properly
 trait HasPrecedence {
     fn precedence(&self) -> u32;
@@ -1139,56 +1192,7 @@ where
         FunIdentifier::Expr(ref e) => show_expr(f, &*e),
         FunIdentifier::Identifier(ref n) => {
             let id = n.0.as_str();
-            let _ = f.write_str(match id {
-                // Vector types
-                "bvec2" => "bool2",
-                "bvec3" => "bool3",
-                "bvec4" => "bool4",
-                "ivec2" => "int2",
-                "ivec3" => "int3",
-                "ivec4" => "int4",
-                "uvec2" => "uint2",
-                "uvec3" => "uint3",
-                "uvec4" => "uint4",
-                "dvec2" => "double2",
-                "dvec3" => "double3",
-                "dvec4" => "double4",
-                "vec2" => "float2",
-                "vec3" => "float3",
-                "vec4" => "float4",
-
-                //Matrix types
-                "mat2" => "float2x2",
-                "mat3" => "float3x3",
-                "mat4" => "float4x4",
-                "mat2x2" => "float2x2",
-                "mat2x3" => "float2x3",
-                "mat2x4" => "float2x4",
-                "mat3x2" => "float3x2",
-                "mat3x3" => "float3x3",
-                "mat3x4" => "float3x4",
-                "mat4x2" => "float4x2",
-                "mat4x3" => "float4x3",
-                "mat4x4" => "float4x4",
-
-                // Builtins
-                "mix" => "lerp",
-                "fract" => "frac",
-                "texture" => "tex2D",
-                "tex2DLod" => "tex2Dlod",
-                "refrac" => "refract",
-                "mod" => "glsl_mod",
-                "atan" => "atan2",
-                "floatBitsToInt" => "asint",
-                "intBitsToFloat" => "asfloat",
-                "dFdx" | "dFdxCoarse" => "ddx",
-                "dFdy" | "dFdyCoarse" => "ddy",
-                "dFdxFine" => "ddx_fine",
-                "dFdyFine" => "ddy_fine",
-                "inversesqrt" => "rsqrt",
-
-                a => a,
-            });
+            let _ = f.write_str(replace_id(id));
         }
     }
 }
@@ -1781,7 +1785,11 @@ where
             if is_matrix(&expr) {
                 add_mat(ident.0.clone())
             }
-            show_expr(&mut res, &expr);
+            
+            match expr {
+                Expr::Variable(id) => show_expr(&mut res, &Expr::Variable(Identifier(replace_id(id.0.as_str()).to_owned()))),
+                _ => show_expr(&mut res, &expr)
+            };
         }
         res
     };
