@@ -74,6 +74,7 @@ pub fn process_macros(s: String) -> (String, HashMap<usize, String>) {
     let mut buff = String::new();
     let mut defs: HashMap<usize, String> = HashMap::new();
 
+    push_mat();
     for (i, line) in s.lines().enumerate() {
         if line.trim_start().starts_with("#") {
             // Marker declaration
@@ -1774,7 +1775,7 @@ where
                     }
                 }
             }
-            show_statement(&mut res, &stmt, true);
+            show_statement(&mut res, &stmt, false);
         } else if let Ok(expr) = Expr::parse(value) {
             res.clear();
             if is_matrix(&expr) {
@@ -2041,8 +2042,6 @@ Shader \"Converted/Template\"
 
 ",
     );
-
-    push_mat();
 
     for ed in &(tu.0).0 {
         match ed {
