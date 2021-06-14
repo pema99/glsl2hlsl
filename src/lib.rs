@@ -1180,6 +1180,10 @@ where
                 "atan" => "atan2",
                 "floatBitsToInt" => "asint",
                 "intBitsToFloat" => "asfloat",
+                "dFdx" | "dFdxCoarse" => "ddx",
+                "dFdy" | "dFdyCoarse" => "ddy",
+                "dFdxFine" => "ddx_fine",
+                "dFdyFine" => "ddy_fine",
 
                 a => a,
             });
