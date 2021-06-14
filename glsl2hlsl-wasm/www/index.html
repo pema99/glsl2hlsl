@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Hello wasm-pack!</title>
+    <title>glsl2hlsl</title>
   </head>
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
@@ -10,9 +10,34 @@
     <div class="areas">
 
         
-        <textarea id="in"></textarea>
+        <h2>Shadertoy code:</h2>
+        <h2>Shaderlab (Unity) code:</h2>
+        <textarea id="in">
+// http://www.pouet.net/prod.php?which=57245
+// If you intend to reuse this shader, please add credits to 'Danilo Guanabara'
+
+#define t iTime
+#define r iResolution.xy
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord ){
+	vec3 c;
+	float l,z=t;
+	for(int i=0;i<3;i++) {
+		vec2 uv,p=fragCoord.xy/r;
+		uv=p;
+		p-=.5;
+		p.x*=r.x/r.y;
+		z+=.07;
+		l=length(p);
+		uv+=p/l*(sin(z)+1.)*abs(sin(l*9.-z*2.));
+		c[i]=.01/length(abs(mod(uv,1.)-.5));
+	}
+	fragColor=vec4(c/l,t);
+}
+        </textarea>
         
         <textarea id="out" ></textarea>
+
     </div>
 
     <input id="convert" type="button" value="Convert"/>
@@ -20,6 +45,7 @@
     <style>
         * { box-sizing: border-box; }
         html, body { height: 100%; }
+
         textarea {
             width: 50%;
             float: left;
@@ -27,8 +53,19 @@
             resize: none;
         }
 
+        h2 {
+            width: 50%;
+            float: left;
+            margin:0;
+        }
+
+        #convert {
+            padding: 10;
+            font-size:26px;
+        }
+
         .areas {
-            height: 90%;
+            height: 80%;
         }
 
     </style>
