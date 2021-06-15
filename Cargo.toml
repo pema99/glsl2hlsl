@@ -7,8 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-glsl = "*"
-
+glsl = "6.0.0"
+ureq = { version = "2.1.1", features = ["json"] }
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0.64"
+md5 = "0.7.0"
 
 [workspace]
 members=["glsl2hlsl-wasm"]

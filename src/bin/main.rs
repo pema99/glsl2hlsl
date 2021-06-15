@@ -1,14 +1,9 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
-use std::iter;
+extern crate glsl2hlsl;
+use glsl2hlsl::*;
 
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
 
-mod lib;
-use lib::*;
-
-// ---- Setup ----
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
