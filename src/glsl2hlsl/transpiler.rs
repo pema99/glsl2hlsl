@@ -2005,6 +2005,7 @@ Shader \"Converted/Template\"
         _ThirdTex (\"iChannel2\", 2D) = \"white\" {}
         _FourthTex (\"iChannel3\", 2D) = \"white\" {}
         _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
+        [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1
     }
     SubShader
     {
@@ -2033,6 +2034,7 @@ Shader \"Converted/Template\"
             sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
             sampler2D _FourthTex; float4 _FourthTex_TexelSize;
             float4 _Mouse;
+            float _GammaCorrect;
 
             // GLSL Compatability macros
             #define iFrame (floor(_Time.y / 60))
@@ -2079,6 +2081,8 @@ Shader \"Converted/Template\"
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_fmt(format_args!("if (_GammaCorrect) {}.rgb = pow({}.rgb, 2.2);\n", frag, frag));
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("return {};\n", frag));
                     sub_indent();

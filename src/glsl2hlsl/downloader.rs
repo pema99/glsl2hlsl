@@ -152,6 +152,7 @@ Material:
     - _Mode: 0
     - _SrcBlend: 1
     - _ZWrite: 1
+    - _GammaCorrect: 1
     m_Colors:
     - _Mouse: {{r: 0.5, g: 0.5, b: 0.5, a: 0.5}}
 ",
