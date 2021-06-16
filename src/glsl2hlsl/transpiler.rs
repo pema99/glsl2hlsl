@@ -2119,8 +2119,7 @@ where
     F: Write,
 {
     let _ = f.write_str(
-        "
-Shader \"Converted/Template\"
+        "Shader \"Converted/Template\"
 {
     Properties
     {
@@ -2226,8 +2225,7 @@ Shader \"Converted/Template\"
     }
 
     let _ = f.write_str(
-        "
-        ENDCG
+        "            ENDCG
         }
     }
 }",
