@@ -351,6 +351,15 @@ where
 
     add_indent();
     for field in &s.fields.0 {
+        // Type struct fields
+        if let Some(ref name) = s.name {
+            if let Some(tk) = typespec_to_typekind(&field.ty.ty) {
+                for id in &field.identifiers {
+                    add_sym(format!("{}.{}", name.0, id.ident.0), tk.clone());
+                }
+            }
+        }
+
         show_struct_field(f, field);
     }
     sub_indent();
