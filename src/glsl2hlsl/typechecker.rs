@@ -79,7 +79,7 @@ pub fn translate_glsl_id(s: &str) -> &str {
         "mod" => "glsl_mod",
         "atan" => "atan2",
         "floatBitsToInt" => "asint",
-        "intBitsToFloat" => "asfloat",
+        "intBitsToFloat" | "uintBitsToFloat" => "asfloat",
         "dFdx" | "dFdxCoarse" => "ddx",
         "dFdy" | "dFdyCoarse" => "ddy",
         "dFdxFine" => "ddx_fine",
