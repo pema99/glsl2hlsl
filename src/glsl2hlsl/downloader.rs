@@ -55,7 +55,7 @@ pub fn download_shader(id: &str) -> Result<Shader, ureq::Error> {
     Ok(shader)
 }
 
-pub fn make_shader(json: &str) -> Result<Shader, serde_json::Error>{
+pub fn make_shader(json: &str) -> Result<Shader, serde_json::Error> {
     Ok(serde_json::from_str::<ShaderContainer>(json)?.Shader)
 }
 

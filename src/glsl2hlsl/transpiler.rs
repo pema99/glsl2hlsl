@@ -40,30 +40,38 @@ fn get_indent() -> String {
     unsafe { iter::repeat("    ").take(INDENT_LEVEL).collect::<String>() }
 }
 
+#[derive(Clone)]
+enum TypeKind {
+    Matrix(usize, usize),
+    Vector(usize),
+    Scalar,
+    Struct(String),
+}
+
 // And even more for this
-static mut MAT_TABLE: Vec<HashSet<String>> = Vec::new();
-fn add_mat(name: String) {
+static mut SYM_TABLE: Vec<HashMap<String, TypeKind>> = Vec::new();
+fn add_sym(name: String, ty: TypeKind) {
     unsafe {
-        MAT_TABLE.last_mut().unwrap().insert(name);
+        SYM_TABLE.last_mut().unwrap().insert(name, ty);
     }
 }
-fn push_mat() {
+fn push_sym() {
     unsafe {
-        MAT_TABLE.push(HashSet::new());
+        SYM_TABLE.push(HashMap::new());
     }
 }
-fn pop_mat() {
+fn pop_sym() {
     unsafe {
-        MAT_TABLE.pop();
+        SYM_TABLE.pop();
     }
 }
-fn lookup_mat(name: &str) -> bool {
+fn lookup_sym(name: &str) -> Option<TypeKind> {
     unsafe {
-        if let Some(v) = MAT_TABLE.last() {
-            v.contains(name) || MAT_TABLE.first().unwrap().contains(name)
-        } else {
-            false
-        }
+        SYM_TABLE
+            .last()
+            .and_then(|x| x.get(name))
+            .and(SYM_TABLE.first().and_then(|x| x.get(name)))
+            .map(|x| x.clone())
     }
 }
 
@@ -74,7 +82,7 @@ pub fn process_macros(s: String) -> (String, HashMap<usize, String>) {
     let mut buff = String::new();
     let mut defs: HashMap<usize, String> = HashMap::new();
 
-    push_mat();
+    push_sym();
     for (i, line) in s.lines().enumerate() {
         if line.trim_start().starts_with("#") {
             // Marker declaration
@@ -125,41 +133,8 @@ pub fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
     buff
 }
 
-// Is it a matrix?
-fn is_matrix_id(s: &str) -> bool {
+fn translate_glsl_id(s: &str) -> &str {
     match s {
-        "mat2" | "mat3" | "mat4" | "mat2x2" | "mat2x3" | "mat2x4" | "mat3x2" | "mat3x3"
-        | "mat3x4" | "mat4x2" | "mat4x3" | "mat4x4" => true,
-        "float2x2" | "float3x3" | "float4x4" | "float2x3" | "float2x4" | "float3x2"
-        | "float3x4" | "float4x2" | "float4x3" => true,
-        _ => lookup_mat(s),
-    }
-}
-
-fn is_matrix(e: &Expr) -> bool {
-    match *e {
-        Expr::Variable(ref i) => is_matrix_id(i.0.as_str()),
-        Expr::IntConst(ref _x) => false,
-        Expr::UIntConst(ref _x) => false,
-        Expr::BoolConst(ref _x) => false,
-        Expr::FloatConst(ref _x) => false,
-        Expr::DoubleConst(ref _x) => false,
-        Expr::Unary(ref _op, ref e) => is_matrix(e),
-        Expr::Binary(ref _op, ref l, ref r) => is_matrix(l) || is_matrix(r),
-        Expr::Ternary(ref _c, ref s, ref e) => is_matrix(s) || is_matrix(e),
-        Expr::Assignment(ref _v, ref _op, ref e) => is_matrix(e),
-        Expr::Bracket(ref _e, ref _a) => false,
-        Expr::FunCall(FunIdentifier::Identifier(ref id), ref _args) => is_matrix_id(id.0.as_str()),
-        Expr::Dot(ref _e, ref i) => is_matrix_id(i.0.as_str()),
-        Expr::PostInc(ref e) => is_matrix(e),
-        Expr::PostDec(ref e) => is_matrix(e),
-        Expr::Comma(ref _a, ref b) => is_matrix(b),
-        _ => false,
-    }
-}
-
-fn replace_id(id: &str) -> &str {
-    match id {
         // Vector types
         "bvec2" => "bool2",
         "bvec3" => "bool3",
@@ -208,6 +183,139 @@ fn replace_id(id: &str) -> &str {
         "inversesqrt" => "rsqrt",
 
         a => a,
+    }
+}
+
+fn get_function_ret_type<'a>(s: &str, args: Vec<Option<TypeKind>>) -> Option<TypeKind> {
+    match translate_glsl_id(s) {
+        // Vector types
+        "bool2" => Some(TypeKind::Vector(2)),
+        "bool3" => Some(TypeKind::Vector(3)),
+        "bool4" => Some(TypeKind::Vector(4)),
+        "int2" => Some(TypeKind::Vector(2)),
+        "int3" => Some(TypeKind::Vector(3)),
+        "int4" => Some(TypeKind::Vector(4)),
+        "uint2" => Some(TypeKind::Vector(2)),
+        "uint3" => Some(TypeKind::Vector(3)),
+        "uint4" => Some(TypeKind::Vector(4)),
+        "double2" => Some(TypeKind::Vector(2)),
+        "double3" => Some(TypeKind::Vector(3)),
+        "double4" => Some(TypeKind::Vector(4)),
+        "float2" => Some(TypeKind::Vector(2)),
+        "float3" => Some(TypeKind::Vector(3)),
+        "float4" => Some(TypeKind::Vector(4)),
+
+        //Matrix types
+        "float2x2" => Some(TypeKind::Matrix(2, 2)),
+        "float3x3" => Some(TypeKind::Matrix(3, 3)),
+        "float4x4" => Some(TypeKind::Matrix(4, 4)),
+        "float2x2" => Some(TypeKind::Matrix(2, 2)),
+        "float2x3" => Some(TypeKind::Matrix(2, 3)),
+        "float2x4" => Some(TypeKind::Matrix(2, 4)),
+        "float3x2" => Some(TypeKind::Matrix(3, 2)),
+        "float3x3" => Some(TypeKind::Matrix(3, 3)),
+        "float3x4" => Some(TypeKind::Matrix(3, 4)),
+        "float4x2" => Some(TypeKind::Matrix(4, 2)),
+        "float4x3" => Some(TypeKind::Matrix(4, 3)),
+        "float4x4" => Some(TypeKind::Matrix(4, 4)),
+
+        // Builtins
+        "lerp" => args[0].clone(),
+        "frac" => args[0].clone(),
+        "tex2D" => Some(TypeKind::Vector(4)),
+        "tex2Dlod" => Some(TypeKind::Vector(4)),
+        "refract" => args[0].clone(),
+        "glsl_mod" => args[0].clone(),
+        "atan2" => args[0].clone(),
+        "asint" => args[0].clone(),
+        "asfloat" => Some(TypeKind::Scalar),
+        "ddx" => args[0].clone(),
+        "ddy" => args[0].clone(),
+        "ddx_fine" => args[0].clone(),
+        "ddy_fine" => args[0].clone(),
+        "rsqrt" => args[0].clone(),
+
+        _ => lookup_sym(s),
+    }
+}
+
+fn get_expr_type(e: &Expr) -> Option<TypeKind> {
+    match e {
+        Expr::Variable(ref i) => lookup_sym(i.as_str()),
+        Expr::IntConst(ref _x) => Some(TypeKind::Scalar),
+        Expr::UIntConst(ref _x) => Some(TypeKind::Scalar),
+        Expr::BoolConst(ref _x) => Some(TypeKind::Scalar),
+        Expr::FloatConst(ref _x) => Some(TypeKind::Scalar),
+        Expr::DoubleConst(ref _x) => Some(TypeKind::Scalar),
+        Expr::Unary(ref _op, ref e) => get_expr_type(e),
+        Expr::Binary(ref op, ref l, ref r) => {
+            let (l, r) = (get_expr_type(l), get_expr_type(r));
+            match (l.clone(), op, r.clone()) {
+                (Some(_), _, Some(TypeKind::Scalar)) => l, // anything op scalar = scalar
+                (Some(TypeKind::Scalar), _, Some(_)) => r, // scalar op anything = scalar
+                (Some(TypeKind::Vector(_)), _, Some(TypeKind::Vector(_))) => l, // componentwise vector
+                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => Some(TypeKind::Scalar), // matrix multiplication
+                (Some(TypeKind::Matrix(_, _)), _, Some(TypeKind::Matrix(_, _))) => l, // componentwise matrix
+                (Some(TypeKind::Vector(_)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => l, // vector matrix mul
+                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Vector(_))) => r, // matrix vector mul
+                _ => None
+            }
+        },
+        Expr::Ternary(ref _c, ref s, ref e) => {
+            let (l, r) = (get_expr_type(s), get_expr_type(e));
+            match (l.clone(), r.clone()) {
+                (_, Some(TypeKind::Scalar)) => l,
+                (Some(TypeKind::Scalar), _) => r,
+                _ => l,
+            }
+        },
+        Expr::Assignment(ref _v, ref _op, ref e) => get_expr_type(e),
+        Expr::Bracket(ref _e, ref _a) => None, // TODO: array ignored for now
+        Expr::FunCall(FunIdentifier::Identifier(ref id), ref args) => get_function_ret_type(id.0.as_str(), args.iter().map(get_expr_type).collect()), // TODO: this can't handle overloads
+        Expr::Dot(ref e, ref i) => {
+            match get_expr_type(e) {
+                Some(TypeKind::Scalar) | Some(TypeKind::Vector(_)) => {
+                    // swizzling
+                    if i.0.len() == 1 {
+                        return Some(TypeKind::Scalar);
+                    } else {
+                        return Some(TypeKind::Vector(i.0.len()));
+                    }
+                }
+                Some(TypeKind::Matrix(_, _)) => Some(TypeKind::Scalar), // matrix access
+                Some(TypeKind::Struct(name)) => lookup_sym(format!("{}.{}", name, i.0).as_str()),
+                a => a,
+            }
+        },
+        Expr::PostInc(ref e) => get_expr_type(e),
+        Expr::PostDec(ref e) => get_expr_type(e),
+        Expr::Comma(ref _a, ref b) => get_expr_type(b),
+        _ => None,
+    }
+}
+
+fn is_matrix(e: &Expr) -> bool {
+    match get_expr_type(e) {
+        Some(TypeKind::Matrix(_, _)) => true,
+        _ => false
+    }
+}
+fn is_scalar(e: &Expr) -> bool {
+    match get_expr_type(e) {
+        Some(TypeKind::Scalar) => true,
+        _ => false
+    }
+}
+fn is_struct(e: &Expr) -> bool {
+    match get_expr_type(e) {
+        Some(TypeKind::Struct(_)) => true,
+        _ => false
+    }
+}
+fn is_vector(e: &Expr) -> bool {
+    match get_expr_type(e) {
+        Some(TypeKind::Vector(_)) => true,
+        _ => false
     }
 }
 
@@ -786,20 +894,14 @@ where
             }
         }
         Expr::Binary(ref op, ref l, ref r) => {
-            // handle mat mult
-            if *op == BinaryOp::Mult {
-                let is_scalar = |l: &Box<Expr>| match **l {
-                    Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
-                    _ => false,
-                };
-                if (!is_scalar(l) && !is_scalar(r)) && (is_matrix(l) || is_matrix(r)) {
-                    let _ = f.write_str("mul(");
-                    show_expr(f, &l);
-                    let _ = f.write_str(",");
-                    show_expr(f, &r);
-                    let _ = f.write_str(")");
-                    return;
-                }
+            // Handle mat mult
+            if *op == BinaryOp::Mult && (is_matrix(l) || is_matrix(r)) {
+                let _ = f.write_str("mul(");
+                show_expr(f, &l);
+                let _ = f.write_str(",");
+                show_expr(f, &r);
+                let _ = f.write_str(")");
+                return;
             }
 
             // Note: all binary ops are left-to-right associative (<= for left part)
@@ -843,32 +945,18 @@ where
             }
         }
         Expr::Assignment(ref v, ref op, ref e) => {
-            // add mat assignment
-            if let Expr::FunCall(FunIdentifier::Identifier(ref id), _) = **e {
-                if is_matrix_id(id.0.as_str()) {
-                    add_mat(id.0.clone());
-                }
-            }
-
-            // handle mat mult
-            if *op == AssignmentOp::Mult {
-                let is_scalar = |l: &Box<Expr>| match **l {
-                    Expr::FloatConst(_) | Expr::DoubleConst(_) => true,
-                    _ => false,
-                };
-                if is_matrix(e) && !is_scalar(e) {
-                    show_expr(f, &v); //TODO: Precedence
-                    let _ = f.write_str(" = mul(");
-                    show_expr(f, &e);
-                    let _ = f.write_str(",");
-                    show_expr(f, &v);
-                    let _ = f.write_str(")");
-                    return;
-                }
+            // Handle mat mult
+            if *op == AssignmentOp::Mult && is_matrix(e) {
+                show_expr(f, &v); //TODO: Precedence
+                let _ = f.write_str(" = mul(");
+                show_expr(f, &e);
+                let _ = f.write_str(",");
+                show_expr(f, &v);
+                let _ = f.write_str(")");
+                return;
             }
 
             // Note: all assignment ops are right-to-left associative
-
             if v.precedence() < op.precedence() {
                 show_expr(f, &v);
             } else {
@@ -1192,7 +1280,7 @@ where
         FunIdentifier::Expr(ref e) => show_expr(f, &*e),
         FunIdentifier::Identifier(ref n) => {
             let id = n.0.as_str();
-            let _ = f.write_str(replace_id(id));
+            let _ = f.write_str(translate_glsl_id(id));
         }
     }
 }
@@ -1254,30 +1342,28 @@ where
     F: Write,
 {
     // Add function prototypes to matrix lookup tab
-    let mat = match fp.ty.ty.ty {
-        TypeSpecifierNonArray::Mat2
-        | TypeSpecifierNonArray::Mat3
-        | TypeSpecifierNonArray::Mat4
-        | TypeSpecifierNonArray::Mat23
-        | TypeSpecifierNonArray::Mat24
-        | TypeSpecifierNonArray::Mat32
-        | TypeSpecifierNonArray::Mat34
-        | TypeSpecifierNonArray::Mat42
-        | TypeSpecifierNonArray::Mat43 => true,
-        TypeSpecifierNonArray::DMat2
-        | TypeSpecifierNonArray::DMat3
-        | TypeSpecifierNonArray::DMat4
-        | TypeSpecifierNonArray::DMat23
-        | TypeSpecifierNonArray::DMat24
-        | TypeSpecifierNonArray::DMat32
-        | TypeSpecifierNonArray::DMat34
-        | TypeSpecifierNonArray::DMat42
-        | TypeSpecifierNonArray::DMat43 => true,
-        _ => false,
+    match fp.ty.ty.ty {
+        TypeSpecifierNonArray::Bool | TypeSpecifierNonArray::Int | TypeSpecifierNonArray::UInt |
+        TypeSpecifierNonArray::Float | TypeSpecifierNonArray::Double => add_sym(fp.name.0.clone(), TypeKind::Scalar),
+        TypeSpecifierNonArray::Vec2 | TypeSpecifierNonArray::DVec2 | TypeSpecifierNonArray::BVec2 |
+        TypeSpecifierNonArray::IVec2 | TypeSpecifierNonArray::UVec2  => add_sym(fp.name.0.clone(), TypeKind::Vector(2)),
+        TypeSpecifierNonArray::Vec3 | TypeSpecifierNonArray::DVec3 | TypeSpecifierNonArray::BVec3 |
+        TypeSpecifierNonArray::IVec3 | TypeSpecifierNonArray::UVec3  => add_sym(fp.name.0.clone(), TypeKind::Vector(3)),
+        TypeSpecifierNonArray::Vec4 | TypeSpecifierNonArray::DVec4 | TypeSpecifierNonArray::BVec4 |
+        TypeSpecifierNonArray::IVec4 | TypeSpecifierNonArray::UVec4  => add_sym(fp.name.0.clone(), TypeKind::Vector(4)),
+        TypeSpecifierNonArray::Mat2 | TypeSpecifierNonArray::DMat2 => add_sym(fp.name.0.clone(), TypeKind::Matrix(2, 2)),
+        TypeSpecifierNonArray::Mat3 | TypeSpecifierNonArray::DMat3 => add_sym(fp.name.0.clone(), TypeKind::Matrix(3, 3)),
+        TypeSpecifierNonArray::Mat4 | TypeSpecifierNonArray::DMat4 => add_sym(fp.name.0.clone(), TypeKind::Matrix(4, 4)),
+        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::DMat23 => add_sym(fp.name.0.clone(), TypeKind::Matrix(2, 3)),
+        TypeSpecifierNonArray::Mat24 | TypeSpecifierNonArray::DMat24 => add_sym(fp.name.0.clone(), TypeKind::Matrix(2, 4)),
+        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::DMat32 => add_sym(fp.name.0.clone(), TypeKind::Matrix(3, 2)),
+        TypeSpecifierNonArray::Mat34 | TypeSpecifierNonArray::DMat34 => add_sym(fp.name.0.clone(), TypeKind::Matrix(3, 4)),
+        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::DMat42 => add_sym(fp.name.0.clone(), TypeKind::Matrix(4, 2)),
+        TypeSpecifierNonArray::Mat43 | TypeSpecifierNonArray::DMat43 => add_sym(fp.name.0.clone(), TypeKind::Matrix(4, 3)),
+        TypeSpecifierNonArray::Struct(ref s) => if let Some(ref id) = s.name { add_sym(fp.name.0.clone(), TypeKind::Struct(id.0.clone())) },
+        TypeSpecifierNonArray::TypeName(ref tn) => add_sym(fp.name.0.clone(), TypeKind::Struct(tn.0.clone())),
+        _ => {},
     };
-    if mat {
-        add_mat(fp.name.0.clone());
-    }
 
     show_fully_specified_type(f, &fp.ty);
 
@@ -1336,34 +1422,37 @@ pub fn show_init_declarator_list<F>(f: &mut F, i: &InitDeclaratorList)
 where
     F: Write,
 {
-    let mat = match i.head.ty.ty.ty {
-        TypeSpecifierNonArray::Mat2
-        | TypeSpecifierNonArray::Mat3
-        | TypeSpecifierNonArray::Mat4
-        | TypeSpecifierNonArray::Mat23
-        | TypeSpecifierNonArray::Mat24
-        | TypeSpecifierNonArray::Mat32
-        | TypeSpecifierNonArray::Mat34
-        | TypeSpecifierNonArray::Mat42
-        | TypeSpecifierNonArray::Mat43 => true,
-        TypeSpecifierNonArray::DMat2
-        | TypeSpecifierNonArray::DMat3
-        | TypeSpecifierNonArray::DMat4
-        | TypeSpecifierNonArray::DMat23
-        | TypeSpecifierNonArray::DMat24
-        | TypeSpecifierNonArray::DMat32
-        | TypeSpecifierNonArray::DMat34
-        | TypeSpecifierNonArray::DMat42
-        | TypeSpecifierNonArray::DMat43 => true,
-        _ => false,
+    let add_all_sym = |ty: TypeKind| {
+        if let Some(id) = i.head.name.clone() {
+            add_sym(id.0, ty.clone());
+            for decl in &i.tail {
+                add_sym(decl.ident.ident.0.clone(), ty.clone());
+            }
+        }
     };
 
-    if mat {
-        add_mat(i.head.name.clone().unwrap().0);
-        for decl in &i.tail {
-            add_mat(decl.ident.ident.0.clone());
-        }
-    }
+    match i.head.ty.ty.ty {
+        TypeSpecifierNonArray::Bool | TypeSpecifierNonArray::Int | TypeSpecifierNonArray::UInt |
+        TypeSpecifierNonArray::Float | TypeSpecifierNonArray::Double => add_all_sym(TypeKind::Scalar),
+        TypeSpecifierNonArray::Vec2 | TypeSpecifierNonArray::DVec2 | TypeSpecifierNonArray::BVec2 |
+        TypeSpecifierNonArray::IVec2 | TypeSpecifierNonArray::UVec2  => add_all_sym(TypeKind::Vector(2)),
+        TypeSpecifierNonArray::Vec3 | TypeSpecifierNonArray::DVec3 | TypeSpecifierNonArray::BVec3 |
+        TypeSpecifierNonArray::IVec3 | TypeSpecifierNonArray::UVec3  => add_all_sym(TypeKind::Vector(3)),
+        TypeSpecifierNonArray::Vec4 | TypeSpecifierNonArray::DVec4 | TypeSpecifierNonArray::BVec4 |
+        TypeSpecifierNonArray::IVec4 | TypeSpecifierNonArray::UVec4  => add_all_sym(TypeKind::Vector(4)),
+        TypeSpecifierNonArray::Mat2 | TypeSpecifierNonArray::DMat2 => add_all_sym(TypeKind::Matrix(2, 2)),
+        TypeSpecifierNonArray::Mat3 | TypeSpecifierNonArray::DMat3 => add_all_sym(TypeKind::Matrix(3, 3)),
+        TypeSpecifierNonArray::Mat4 | TypeSpecifierNonArray::DMat4 => add_all_sym(TypeKind::Matrix(4, 4)),
+        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::DMat23 => add_all_sym(TypeKind::Matrix(2, 3)),
+        TypeSpecifierNonArray::Mat24 | TypeSpecifierNonArray::DMat24 => add_all_sym(TypeKind::Matrix(2, 4)),
+        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::DMat32 => add_all_sym(TypeKind::Matrix(3, 2)),
+        TypeSpecifierNonArray::Mat34 | TypeSpecifierNonArray::DMat34 => add_all_sym(TypeKind::Matrix(3, 4)),
+        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::DMat42 => add_all_sym(TypeKind::Matrix(4, 2)),
+        TypeSpecifierNonArray::Mat43 | TypeSpecifierNonArray::DMat43 => add_all_sym(TypeKind::Matrix(4, 3)),
+        TypeSpecifierNonArray::Struct(ref s) => if let Some(ref id) = s.name { add_all_sym(TypeKind::Struct(id.0.clone())) },
+        TypeSpecifierNonArray::TypeName(ref tn) => add_all_sym(TypeKind::Struct(tn.0.clone())),
+        _ => {},
+    };
 
     show_single_declaration(f, &i.head);
 
@@ -1500,10 +1589,10 @@ where
 
     // Show function
     show_function_prototype(f, &fd.prototype);
-    push_mat();
+    push_sym();
     let _ = f.write_str("\n");
     show_compound_statement(f, &stmts, true);
-    pop_mat();
+    pop_sym();
 }
 
 pub fn show_compound_statement<F>(f: &mut F, cst: &CompoundStatement, whitespace: bool)
@@ -1772,22 +1861,23 @@ where
             res.clear();
             if let Statement::Simple(s) = &stmt {
                 if let SimpleStatement::Expression(Some(ref e)) = **s {
-                    if is_matrix(&e) {
-                        add_mat(ident.0.clone())
+                    if let Some(ty) = get_expr_type(e) {
+                        add_sym(ident.0.clone(), ty);
                     }
                 }
             }
             show_statement(&mut res, &stmt, false);
         } else if let Ok(expr) = Expr::parse(value) {
             res.clear();
-            if is_matrix(&expr) {
-                add_mat(ident.0.clone())
+            if let Some(ty) = get_expr_type(&expr) {
+                add_sym(ident.0.clone(), ty);
             }
 
+            // TODO: This should be recursive
             match expr {
                 Expr::Variable(id) => show_expr(
                     &mut res,
-                    &Expr::Variable(Identifier(replace_id(id.0.as_str()).to_owned())),
+                    &Expr::Variable(Identifier(translate_glsl_id(id.0.as_str()).to_owned())),
                 ),
                 _ => show_expr(&mut res, &expr),
             };
@@ -2058,7 +2148,7 @@ Shader \"Converted/Template\"
         match ed {
             ExternalDeclaration::FunctionDefinition(fdef) => {
                 if fdef.prototype.name.0.as_str() == "mainImage" {
-                    push_mat();
+                    push_sym();
 
                     let frag = match &fdef.prototype.parameters[0] {
                         FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
@@ -2082,14 +2172,17 @@ Shader \"Converted/Template\"
                         show_statement(f, st, true);
                     }
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!("if (_GammaCorrect) {}.rgb = pow({}.rgb, 2.2);\n", frag, frag));
+                    let _ = f.write_fmt(format_args!(
+                        "if (_GammaCorrect) {}.rgb = pow({}.rgb, 2.2);\n",
+                        frag, frag
+                    ));
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("return {};\n", frag));
                     sub_indent();
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("}\n");
 
-                    pop_mat();
+                    pop_sym();
                 } else {
                     show_external_declaration(f, ed);
                 }
