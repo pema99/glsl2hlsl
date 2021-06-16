@@ -1087,7 +1087,7 @@ where
             show_init_declarator_list(f, &list);
             let _ = f.write_str(";");
         }
-        Declaration::Precision(ref qual, ref ty) => {
+        Declaration::Precision(ref _qual, ref _ty) => {
             /*show_precision_qualifier(f, &qual);
             show_type_specifier(f, &ty);
             let _ = f.write_str(";");*/

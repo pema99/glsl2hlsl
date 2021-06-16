@@ -1,9 +1,9 @@
 use serde::Deserialize;
-use std::path::*;
 
 use crate::transpile;
 
 #[derive(Deserialize, Debug)]
+#[allow(non_snake_case)]
 struct ShaderContainer {
     Shader: Shader,
 }
