@@ -1,13 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::iter;
 
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
 
-// TODO:
-// Refactor geez
-// Better typechecking, more than mats
+use super::typechecker::*;
 
 pub fn transpile(input: String) -> String {
     // Preprocessor step
@@ -40,42 +38,6 @@ fn get_indent() -> String {
     unsafe { iter::repeat("    ").take(INDENT_LEVEL).collect::<String>() }
 }
 
-#[derive(Clone, Debug)]
-enum TypeKind {
-    Matrix(usize, usize),
-    Vector(usize),
-    Scalar,
-    Struct(String),
-}
-
-// And even more for this
-static mut SYM_TABLE: Vec<HashMap<String, TypeKind>> = Vec::new();
-fn add_sym(name: String, ty: TypeKind) {
-    unsafe {
-        SYM_TABLE.last_mut().unwrap().insert(name, ty);
-    }
-}
-fn push_sym() {
-    unsafe {
-        SYM_TABLE.push(HashMap::new());
-    }
-}
-fn pop_sym() {
-    unsafe {
-        SYM_TABLE.pop();
-    }
-}
-fn lookup_sym(name: &str) -> Option<TypeKind> {
-    unsafe {
-        SYM_TABLE
-            .last()
-            .and_then(|x| x.get(name))
-            .or(SYM_TABLE.first().and_then(|x| x.get(name)))
-            .map(|x| x.clone())
-    }
-}
-
-// ---- Transpilation code ----
 // Need this hack in an attempt to support the preprocessor since GLSL
 // crate doesn't really support it.
 pub fn process_macros(s: String) -> (String, HashMap<usize, String>) {
@@ -131,248 +93,6 @@ pub fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
     }
 
     buff
-}
-
-fn translate_glsl_id(s: &str) -> &str {
-    match s {
-        // Vector types
-        "bvec2" => "bool2",
-        "bvec3" => "bool3",
-        "bvec4" => "bool4",
-        "ivec2" => "int2",
-        "ivec3" => "int3",
-        "ivec4" => "int4",
-        "uvec2" => "uint2",
-        "uvec3" => "uint3",
-        "uvec4" => "uint4",
-        "dvec2" => "double2",
-        "dvec3" => "double3",
-        "dvec4" => "double4",
-        "vec2" => "float2",
-        "vec3" => "float3",
-        "vec4" => "float4",
-
-        //Matrix types
-        "mat2" => "float2x2",
-        "mat3" => "float3x3",
-        "mat4" => "float4x4",
-        "mat2x2" => "float2x2",
-        "mat2x3" => "float2x3",
-        "mat2x4" => "float2x4",
-        "mat3x2" => "float3x2",
-        "mat3x3" => "float3x3",
-        "mat3x4" => "float3x4",
-        "mat4x2" => "float4x2",
-        "mat4x3" => "float4x3",
-        "mat4x4" => "float4x4",
-
-        // Builtins
-        "mix" => "lerp",
-        "fract" => "frac",
-        "texture" => "tex2D",
-        "tex2DLod" => "tex2Dlod",
-        "refrac" => "refract",
-        "mod" => "glsl_mod",
-        "atan" => "atan2",
-        "floatBitsToInt" => "asint",
-        "intBitsToFloat" => "asfloat",
-        "dFdx" | "dFdxCoarse" => "ddx",
-        "dFdy" | "dFdyCoarse" => "ddy",
-        "dFdxFine" => "ddx_fine",
-        "dFdyFine" => "ddy_fine",
-        "inversesqrt" => "rsqrt",
-
-        a => a,
-    }
-}
-
-fn get_function_ret_type<'a>(s: &str, args: Vec<Option<TypeKind>>) -> Option<TypeKind> {
-    match translate_glsl_id(s) {
-        // Vector types
-        "bool2" => Some(TypeKind::Vector(2)),
-        "bool3" => Some(TypeKind::Vector(3)),
-        "bool4" => Some(TypeKind::Vector(4)),
-        "int2" => Some(TypeKind::Vector(2)),
-        "int3" => Some(TypeKind::Vector(3)),
-        "int4" => Some(TypeKind::Vector(4)),
-        "uint2" => Some(TypeKind::Vector(2)),
-        "uint3" => Some(TypeKind::Vector(3)),
-        "uint4" => Some(TypeKind::Vector(4)),
-        "double2" => Some(TypeKind::Vector(2)),
-        "double3" => Some(TypeKind::Vector(3)),
-        "double4" => Some(TypeKind::Vector(4)),
-        "float2" => Some(TypeKind::Vector(2)),
-        "float3" => Some(TypeKind::Vector(3)),
-        "float4" => Some(TypeKind::Vector(4)),
-
-        //Matrix types
-        "float2x2" => Some(TypeKind::Matrix(2, 2)),
-        "float3x3" => Some(TypeKind::Matrix(3, 3)),
-        "float4x4" => Some(TypeKind::Matrix(4, 4)),
-        "float2x3" => Some(TypeKind::Matrix(2, 3)),
-        "float2x4" => Some(TypeKind::Matrix(2, 4)),
-        "float3x2" => Some(TypeKind::Matrix(3, 2)),
-        "float3x4" => Some(TypeKind::Matrix(3, 4)),
-        "float4x2" => Some(TypeKind::Matrix(4, 2)),
-        "float4x3" => Some(TypeKind::Matrix(4, 3)),
-
-        // Builtins
-        "lerp" => args[0].clone(),
-        "frac" => args[0].clone(),
-        "tex2D" => Some(TypeKind::Vector(4)),
-        "tex2Dlod" => Some(TypeKind::Vector(4)),
-        "refract" => args[0].clone(),
-        "glsl_mod" => args[0].clone(),
-        "atan2" => args[0].clone(),
-        "asint" => args[0].clone(),
-        "asfloat" => Some(TypeKind::Scalar),
-        "ddx" => args[0].clone(),
-        "ddy" => args[0].clone(),
-        "ddx_fine" => args[0].clone(),
-        "ddy_fine" => args[0].clone(),
-        "rsqrt" => args[0].clone(),
-
-        _ => lookup_sym(s),
-    }
-}
-
-fn get_expr_type(e: &Expr) -> Option<TypeKind> {
-    match e {
-        Expr::Variable(ref i) => lookup_sym(i.as_str()),
-        Expr::IntConst(ref _x) => Some(TypeKind::Scalar),
-        Expr::UIntConst(ref _x) => Some(TypeKind::Scalar),
-        Expr::BoolConst(ref _x) => Some(TypeKind::Scalar),
-        Expr::FloatConst(ref _x) => Some(TypeKind::Scalar),
-        Expr::DoubleConst(ref _x) => Some(TypeKind::Scalar),
-        Expr::Unary(ref _op, ref e) => get_expr_type(e),
-        Expr::Binary(ref op, ref l, ref r) => {
-            let (l, r) = (get_expr_type(l), get_expr_type(r));
-            match (l.clone(), op, r.clone()) {
-                (Some(_), _, Some(TypeKind::Scalar)) => l, // anything op scalar = scalar
-                (Some(TypeKind::Scalar), _, Some(_)) => r, // scalar op anything = scalar
-                (Some(TypeKind::Vector(_)), _, Some(TypeKind::Vector(_))) => l, // componentwise vector
-                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => {
-                    Some(TypeKind::Scalar)
-                } // matrix multiplication
-                (Some(TypeKind::Matrix(_, _)), _, Some(TypeKind::Matrix(_, _))) => l, // componentwise matrix
-                (Some(TypeKind::Vector(_)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => l, // vector matrix mul
-                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Vector(_))) => r, // matrix vector mul
-                _ => None,
-            }
-        }
-        Expr::Ternary(ref _c, ref s, ref e) => {
-            let (l, r) = (get_expr_type(s), get_expr_type(e));
-            match (l.clone(), r.clone()) {
-                (_, Some(TypeKind::Scalar)) => l,
-                (Some(TypeKind::Scalar), _) => r,
-                _ => l,
-            }
-        }
-        Expr::Assignment(ref _v, ref _op, ref e) => get_expr_type(e),
-        Expr::Bracket(ref _e, ref _a) => None, // TODO: array ignored for now
-        Expr::FunCall(FunIdentifier::Identifier(ref id), ref args) => {
-            get_function_ret_type(id.0.as_str(), args.iter().map(get_expr_type).collect())
-        } // TODO: this can't handle overloads
-        Expr::Dot(ref e, ref i) => {
-            match get_expr_type(e) {
-                Some(TypeKind::Scalar) | Some(TypeKind::Vector(_)) => {
-                    // swizzling
-                    if i.0.len() == 1 {
-                        return Some(TypeKind::Scalar);
-                    } else {
-                        return Some(TypeKind::Vector(i.0.len()));
-                    }
-                }
-                Some(TypeKind::Matrix(_, _)) => Some(TypeKind::Scalar), // matrix access
-                Some(TypeKind::Struct(name)) => lookup_sym(format!("{}.{}", name, i.0).as_str()),
-                a => a,
-            }
-        }
-        Expr::PostInc(ref e) => get_expr_type(e),
-        Expr::PostDec(ref e) => get_expr_type(e),
-        Expr::Comma(ref _a, ref b) => get_expr_type(b),
-        _ => None,
-    }
-}
-
-fn is_matrix(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Matrix(_, _)) => true,
-        _ => false,
-    }
-}
-fn is_scalar(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Scalar) => true,
-        _ => false,
-    }
-}
-fn is_struct(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Struct(_)) => true,
-        _ => false,
-    }
-}
-fn is_vector(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Vector(_)) => true,
-        _ => false,
-    }
-}
-
-fn typespec_to_typekind(ty: &TypeSpecifierNonArray) -> Option<TypeKind> {
-    match ty {
-        TypeSpecifierNonArray::Bool
-        | TypeSpecifierNonArray::Int
-        | TypeSpecifierNonArray::UInt
-        | TypeSpecifierNonArray::Float
-        | TypeSpecifierNonArray::Double => Some(TypeKind::Scalar),
-        TypeSpecifierNonArray::Vec2
-        | TypeSpecifierNonArray::DVec2
-        | TypeSpecifierNonArray::BVec2
-        | TypeSpecifierNonArray::IVec2
-        | TypeSpecifierNonArray::UVec2 => Some(TypeKind::Vector(2)),
-        TypeSpecifierNonArray::Vec3
-        | TypeSpecifierNonArray::DVec3
-        | TypeSpecifierNonArray::BVec3
-        | TypeSpecifierNonArray::IVec3
-        | TypeSpecifierNonArray::UVec3 => Some(TypeKind::Vector(3)),
-        TypeSpecifierNonArray::Vec4
-        | TypeSpecifierNonArray::DVec4
-        | TypeSpecifierNonArray::BVec4
-        | TypeSpecifierNonArray::IVec4
-        | TypeSpecifierNonArray::UVec4 => Some(TypeKind::Vector(4)),
-        TypeSpecifierNonArray::Mat2 | TypeSpecifierNonArray::DMat2 => Some(TypeKind::Matrix(2, 2)),
-        TypeSpecifierNonArray::Mat3 | TypeSpecifierNonArray::DMat3 => Some(TypeKind::Matrix(3, 3)),
-        TypeSpecifierNonArray::Mat4 | TypeSpecifierNonArray::DMat4 => Some(TypeKind::Matrix(4, 4)),
-        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::DMat23 => {
-            Some(TypeKind::Matrix(2, 3))
-        }
-        TypeSpecifierNonArray::Mat24 | TypeSpecifierNonArray::DMat24 => {
-            Some(TypeKind::Matrix(2, 4))
-        }
-        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::DMat32 => {
-            Some(TypeKind::Matrix(3, 2))
-        }
-        TypeSpecifierNonArray::Mat34 | TypeSpecifierNonArray::DMat34 => {
-            Some(TypeKind::Matrix(3, 4))
-        }
-        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::DMat42 => {
-            Some(TypeKind::Matrix(4, 2))
-        }
-        TypeSpecifierNonArray::Mat43 | TypeSpecifierNonArray::DMat43 => {
-            Some(TypeKind::Matrix(4, 3))
-        }
-        TypeSpecifierNonArray::Struct(ref s) => {
-            if let Some(id) = &s.name {
-                Some(TypeKind::Struct(id.0.clone()))
-            } else {
-                None
-            }
-        }
-        TypeSpecifierNonArray::TypeName(ref tn) => Some(TypeKind::Struct(tn.0.clone())),
-        _ => None,
-    }
 }
 
 // Precedence information for transpiling parentheses properly
@@ -435,7 +155,7 @@ impl HasPrecedence for AssignmentOp {
     }
 }
 
-pub fn show_identifier<F>(f: &mut F, i: &Identifier)
+fn show_identifier<F>(f: &mut F, i: &Identifier)
 where
     F: Write,
 {
@@ -454,14 +174,14 @@ where
     let _ = f.write_str(rep);
 }
 
-pub fn show_type_name<F>(f: &mut F, t: &TypeName)
+fn show_type_name<F>(f: &mut F, t: &TypeName)
 where
     F: Write,
 {
     let _ = f.write_str(&t.0);
 }
 
-pub fn show_type_specifier_non_array<F>(f: &mut F, t: &TypeSpecifierNonArray)
+fn show_type_specifier_non_array<F>(f: &mut F, t: &TypeSpecifierNonArray)
 where
     F: Write,
 {
@@ -592,7 +312,7 @@ where
     }
 }
 
-pub fn show_type_specifier<F>(f: &mut F, t: &TypeSpecifier)
+fn show_type_specifier<F>(f: &mut F, t: &TypeSpecifier)
 where
     F: Write,
 {
@@ -603,7 +323,7 @@ where
     }
 }
 
-pub fn show_fully_specified_type<F>(f: &mut F, t: &FullySpecifiedType)
+fn show_fully_specified_type<F>(f: &mut F, t: &FullySpecifiedType)
 where
     F: Write,
 {
@@ -615,7 +335,7 @@ where
     show_type_specifier(f, &t.ty);
 }
 
-pub fn show_struct_non_declaration<F>(f: &mut F, s: &StructSpecifier)
+fn show_struct_non_declaration<F>(f: &mut F, s: &StructSpecifier)
 where
     F: Write,
 {
@@ -639,7 +359,7 @@ where
     let _ = f.write_str("}");
 }
 
-pub fn show_struct<F>(f: &mut F, s: &StructSpecifier)
+fn show_struct<F>(f: &mut F, s: &StructSpecifier)
 where
     F: Write,
 {
@@ -647,7 +367,7 @@ where
     let _ = f.write_str(";\n");
 }
 
-pub fn show_struct_field<F>(f: &mut F, field: &StructFieldSpecifier)
+fn show_struct_field<F>(f: &mut F, field: &StructFieldSpecifier)
 where
     F: Write,
 {
@@ -676,7 +396,7 @@ where
     let _ = f.write_str(";\n");
 }
 
-pub fn show_array_spec<F>(f: &mut F, a: &ArraySpecifier)
+fn show_array_spec<F>(f: &mut F, a: &ArraySpecifier)
 where
     F: Write,
 {
@@ -694,7 +414,7 @@ where
     }
 }
 
-pub fn show_arrayed_identifier<F>(f: &mut F, a: &ArrayedIdentifier)
+fn show_arrayed_identifier<F>(f: &mut F, a: &ArrayedIdentifier)
 where
     F: Write,
 {
@@ -705,7 +425,7 @@ where
     }
 }
 
-pub fn show_type_qualifier<F>(f: &mut F, q: &TypeQualifier)
+fn show_type_qualifier<F>(f: &mut F, q: &TypeQualifier)
 where
     F: Write,
 {
@@ -720,7 +440,7 @@ where
     }
 }
 
-pub fn show_type_qualifier_spec<F>(f: &mut F, q: &TypeQualifierSpec)
+fn show_type_qualifier_spec<F>(f: &mut F, q: &TypeQualifierSpec)
 where
     F: Write,
 {
@@ -738,7 +458,7 @@ where
     }
 }
 
-pub fn show_storage_qualifier<F>(f: &mut F, q: &StorageQualifier)
+fn show_storage_qualifier<F>(f: &mut F, q: &StorageQualifier)
 where
     F: Write,
 {
@@ -798,7 +518,7 @@ where
     }
 }
 
-pub fn show_subroutine<F>(f: &mut F, types: &Vec<TypeName>)
+fn show_subroutine<F>(f: &mut F, types: &Vec<TypeName>)
 where
     F: Write,
 {
@@ -821,7 +541,7 @@ where
     }
 }
 
-pub fn show_layout_qualifier<F>(f: &mut F, l: &LayoutQualifier)
+fn show_layout_qualifier<F>(f: &mut F, l: &LayoutQualifier)
 where
     F: Write,
 {
@@ -839,7 +559,7 @@ where
     let _ = f.write_str(")");
 }
 
-pub fn show_layout_qualifier_spec<F>(f: &mut F, l: &LayoutQualifierSpec)
+fn show_layout_qualifier_spec<F>(f: &mut F, l: &LayoutQualifierSpec)
 where
     F: Write,
 {
@@ -855,7 +575,7 @@ where
     }
 }
 
-pub fn show_precision_qualifier<F>(f: &mut F, p: &PrecisionQualifier)
+fn show_precision_qualifier<F>(f: &mut F, p: &PrecisionQualifier)
 where
     F: Write,
 {
@@ -872,7 +592,7 @@ where
     }
 }
 
-pub fn show_interpolation_qualifier<F>(f: &mut F, i: &InterpolationQualifier)
+fn show_interpolation_qualifier<F>(f: &mut F, i: &InterpolationQualifier)
 where
     F: Write,
 {
@@ -889,7 +609,7 @@ where
     }
 }
 
-pub fn show_float<F>(f: &mut F, x: f32)
+fn show_float<F>(f: &mut F, x: f32)
 where
     F: Write,
 {
@@ -900,7 +620,7 @@ where
     }
 }
 
-pub fn show_double<F>(f: &mut F, x: f64)
+fn show_double<F>(f: &mut F, x: f64)
 where
     F: Write,
 {
@@ -911,7 +631,7 @@ where
     }
 }
 
-pub fn show_expr<F>(f: &mut F, expr: &Expr)
+fn show_expr<F>(f: &mut F, expr: &Expr)
 where
     F: Write,
 {
@@ -1187,7 +907,7 @@ where
     }
 }
 
-pub fn show_path<F>(f: &mut F, path: &Path)
+fn show_path<F>(f: &mut F, path: &Path)
 where
     F: Write,
 {
@@ -1201,7 +921,7 @@ where
     }
 }
 
-pub fn show_unary_op<F>(f: &mut F, op: &UnaryOp)
+fn show_unary_op<F>(f: &mut F, op: &UnaryOp)
 where
     F: Write,
 {
@@ -1227,7 +947,7 @@ where
     }
 }
 
-pub fn show_binary_op<F>(f: &mut F, op: &BinaryOp)
+fn show_binary_op<F>(f: &mut F, op: &BinaryOp)
 where
     F: Write,
 {
@@ -1292,7 +1012,7 @@ where
     }
 }
 
-pub fn show_assignment_op<F>(f: &mut F, op: &AssignmentOp)
+fn show_assignment_op<F>(f: &mut F, op: &AssignmentOp)
 where
     F: Write,
 {
@@ -1333,7 +1053,7 @@ where
     }
 }
 
-pub fn show_function_identifier<F>(f: &mut F, i: &FunIdentifier)
+fn show_function_identifier<F>(f: &mut F, i: &FunIdentifier)
 where
     F: Write,
 {
@@ -1346,7 +1066,7 @@ where
     }
 }
 
-pub fn show_declaration<F>(f: &mut F, d: &Declaration, newline: bool, global: bool)
+fn show_declaration<F>(f: &mut F, d: &Declaration, newline: bool, global: bool)
 where
     F: Write,
 {
@@ -1398,7 +1118,7 @@ where
     }
 }
 
-pub fn show_function_prototype<F>(f: &mut F, fp: &FunctionPrototype)
+fn show_function_prototype<F>(f: &mut F, fp: &FunctionPrototype)
 where
     F: Write,
 {
@@ -1427,7 +1147,7 @@ where
 
     let _ = f.write_str(")");
 }
-pub fn show_function_parameter_declaration<F>(f: &mut F, p: &FunctionParameterDeclaration)
+fn show_function_parameter_declaration<F>(f: &mut F, p: &FunctionParameterDeclaration)
 where
     F: Write,
 {
@@ -1451,7 +1171,7 @@ where
     }
 }
 
-pub fn show_function_parameter_declarator<F>(f: &mut F, p: &FunctionParameterDeclarator)
+fn show_function_parameter_declarator<F>(f: &mut F, p: &FunctionParameterDeclarator)
 where
     F: Write,
 {
@@ -1460,7 +1180,7 @@ where
     show_arrayed_identifier(f, &p.ident);
 }
 
-pub fn show_init_declarator_list<F>(f: &mut F, i: &InitDeclaratorList)
+fn show_init_declarator_list<F>(f: &mut F, i: &InitDeclaratorList)
 where
     F: Write,
 {
@@ -1485,7 +1205,7 @@ where
     }
 }
 
-pub fn show_single_declaration<F>(f: &mut F, d: &SingleDeclaration)
+fn show_single_declaration<F>(f: &mut F, d: &SingleDeclaration)
 where
     F: Write,
 {
@@ -1506,7 +1226,7 @@ where
     }
 }
 
-pub fn show_single_declaration_no_type<F>(f: &mut F, d: &SingleDeclarationNoType)
+fn show_single_declaration_no_type<F>(f: &mut F, d: &SingleDeclarationNoType)
 where
     F: Write,
 {
@@ -1518,7 +1238,7 @@ where
     }
 }
 
-pub fn show_initializer<F>(f: &mut F, i: &Initializer)
+fn show_initializer<F>(f: &mut F, i: &Initializer)
 where
     F: Write,
 {
@@ -1541,7 +1261,7 @@ where
     }
 }
 
-pub fn show_block<F>(f: &mut F, b: &Block)
+fn show_block<F>(f: &mut F, b: &Block)
 where
     F: Write,
 {
@@ -1564,7 +1284,7 @@ where
     }
 }
 
-pub fn show_function_definition<F>(f: &mut F, fd: &FunctionDefinition)
+fn show_function_definition<F>(f: &mut F, fd: &FunctionDefinition)
 where
     F: Write,
 {
@@ -1629,7 +1349,7 @@ where
     pop_sym();
 }
 
-pub fn show_compound_statement<F>(f: &mut F, cst: &CompoundStatement, whitespace: bool)
+fn show_compound_statement<F>(f: &mut F, cst: &CompoundStatement, whitespace: bool)
 where
     F: Write,
 {
@@ -1650,7 +1370,7 @@ where
     let _ = f.write_str("}\n");
 }
 
-pub fn show_statement<F>(f: &mut F, st: &Statement, whitespace: bool)
+fn show_statement<F>(f: &mut F, st: &Statement, whitespace: bool)
 where
     F: Write,
 {
@@ -1660,7 +1380,7 @@ where
     }
 }
 
-pub fn show_simple_statement<F>(f: &mut F, sst: &SimpleStatement, whitespace: bool)
+fn show_simple_statement<F>(f: &mut F, sst: &SimpleStatement, whitespace: bool)
 where
     F: Write,
 {
@@ -1679,7 +1399,7 @@ where
     }
 }
 
-pub fn show_expression_statement<F>(f: &mut F, est: &ExprStatement)
+fn show_expression_statement<F>(f: &mut F, est: &ExprStatement)
 where
     F: Write,
 {
@@ -1690,7 +1410,7 @@ where
     let _ = f.write_str(";\n");
 }
 
-pub fn show_selection_statement<F>(f: &mut F, sst: &SelectionStatement)
+fn show_selection_statement<F>(f: &mut F, sst: &SelectionStatement)
 where
     F: Write,
 {
@@ -1700,7 +1420,7 @@ where
     show_selection_rest_statement(f, &sst.rest);
 }
 
-pub fn show_selection_rest_statement<F>(f: &mut F, sst: &SelectionRestStatement)
+fn show_selection_rest_statement<F>(f: &mut F, sst: &SelectionRestStatement)
 where
     F: Write,
 {
@@ -1735,7 +1455,7 @@ where
     }
 }
 
-pub fn show_switch_statement<F>(f: &mut F, sst: &SwitchStatement)
+fn show_switch_statement<F>(f: &mut F, sst: &SwitchStatement)
 where
     F: Write,
 {
@@ -1750,7 +1470,7 @@ where
     let _ = f.write_str("}\n");
 }
 
-pub fn show_case_label<F>(f: &mut F, cl: &CaseLabel)
+fn show_case_label<F>(f: &mut F, cl: &CaseLabel)
 where
     F: Write,
 {
@@ -1766,7 +1486,7 @@ where
     }
 }
 
-pub fn show_iteration_statement<F>(f: &mut F, ist: &IterationStatement)
+fn show_iteration_statement<F>(f: &mut F, ist: &IterationStatement)
 where
     F: Write,
 {
@@ -1794,7 +1514,7 @@ where
     }
 }
 
-pub fn show_condition<F>(f: &mut F, c: &Condition)
+fn show_condition<F>(f: &mut F, c: &Condition)
 where
     F: Write,
 {
@@ -1810,7 +1530,7 @@ where
     }
 }
 
-pub fn show_for_init_statement<F>(f: &mut F, i: &ForInitStatement)
+fn show_for_init_statement<F>(f: &mut F, i: &ForInitStatement)
 where
     F: Write,
 {
@@ -1824,7 +1544,7 @@ where
     }
 }
 
-pub fn show_for_rest_statement<F>(f: &mut F, r: &ForRestStatement)
+fn show_for_rest_statement<F>(f: &mut F, r: &ForRestStatement)
 where
     F: Write,
 {
@@ -1839,7 +1559,7 @@ where
     }
 }
 
-pub fn show_jump_statement<F>(f: &mut F, j: &JumpStatement)
+fn show_jump_statement<F>(f: &mut F, j: &JumpStatement)
 where
     F: Write,
 {
@@ -1863,7 +1583,7 @@ where
     }
 }
 
-pub fn show_preprocessor<F>(f: &mut F, pp: &Preprocessor)
+fn show_preprocessor<F>(f: &mut F, pp: &Preprocessor)
 where
     F: Write,
 {
@@ -1885,7 +1605,7 @@ where
     }
 }
 
-pub fn show_preprocessor_define<F>(f: &mut F, pd: &PreprocessorDefine)
+fn show_preprocessor_define<F>(f: &mut F, pd: &PreprocessorDefine)
 where
     F: Write,
 {
@@ -1952,42 +1672,42 @@ where
     }
 }
 
-pub fn show_preprocessor_else<F>(f: &mut F)
+fn show_preprocessor_else<F>(f: &mut F)
 where
     F: Write,
 {
     let _ = f.write_str("#else\n");
 }
 
-pub fn show_preprocessor_elseif<F>(f: &mut F, pei: &PreprocessorElseIf)
+fn show_preprocessor_elseif<F>(f: &mut F, pei: &PreprocessorElseIf)
 where
     F: Write,
 {
     let _ = write!(f, "#elseif {}\n", pei.condition);
 }
 
-pub fn show_preprocessor_error<F>(f: &mut F, pe: &PreprocessorError)
+fn show_preprocessor_error<F>(f: &mut F, pe: &PreprocessorError)
 where
     F: Write,
 {
     let _ = writeln!(f, "#error {}", pe.message);
 }
 
-pub fn show_preprocessor_endif<F>(f: &mut F)
+fn show_preprocessor_endif<F>(f: &mut F)
 where
     F: Write,
 {
     let _ = f.write_str("#endif\n");
 }
 
-pub fn show_preprocessor_if<F>(f: &mut F, pi: &PreprocessorIf)
+fn show_preprocessor_if<F>(f: &mut F, pi: &PreprocessorIf)
 where
     F: Write,
 {
     let _ = write!(f, "#if {}\n", pi.condition);
 }
 
-pub fn show_preprocessor_ifdef<F>(f: &mut F, pid: &PreprocessorIfDef)
+fn show_preprocessor_ifdef<F>(f: &mut F, pid: &PreprocessorIfDef)
 where
     F: Write,
 {
@@ -1996,7 +1716,7 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_preprocessor_ifndef<F>(f: &mut F, pind: &PreprocessorIfNDef)
+fn show_preprocessor_ifndef<F>(f: &mut F, pind: &PreprocessorIfNDef)
 where
     F: Write,
 {
@@ -2005,7 +1725,7 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_preprocessor_include<F>(f: &mut F, pi: &PreprocessorInclude)
+fn show_preprocessor_include<F>(f: &mut F, pi: &PreprocessorInclude)
 where
     F: Write,
 {
@@ -2014,7 +1734,7 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_preprocessor_line<F>(f: &mut F, pl: &PreprocessorLine)
+fn show_preprocessor_line<F>(f: &mut F, pl: &PreprocessorLine)
 where
     F: Write,
 {
@@ -2025,14 +1745,14 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_preprocessor_pragma<F>(f: &mut F, pp: &PreprocessorPragma)
+fn show_preprocessor_pragma<F>(f: &mut F, pp: &PreprocessorPragma)
 where
     F: Write,
 {
     let _ = writeln!(f, "#pragma {}", pp.command);
 }
 
-pub fn show_preprocessor_undef<F>(f: &mut F, pud: &PreprocessorUndef)
+fn show_preprocessor_undef<F>(f: &mut F, pud: &PreprocessorUndef)
 where
     F: Write,
 {
@@ -2041,7 +1761,7 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_preprocessor_version<F>(f: &mut F, pv: &PreprocessorVersion)
+fn show_preprocessor_version<F>(f: &mut F, pv: &PreprocessorVersion)
 where
     F: Write,
 {
@@ -2064,7 +1784,7 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_preprocessor_extension<F>(f: &mut F, pe: &PreprocessorExtension)
+fn show_preprocessor_extension<F>(f: &mut F, pe: &PreprocessorExtension)
 where
     F: Write,
 {
@@ -2099,7 +1819,7 @@ where
     let _ = f.write_str("\n");
 }
 
-pub fn show_external_declaration<F>(f: &mut F, ed: &ExternalDeclaration)
+fn show_external_declaration<F>(f: &mut F, ed: &ExternalDeclaration)
 where
     F: Write,
 {
