@@ -2213,6 +2213,8 @@ where
                         "from",
                         "rayori",
                         "ray_ori",
+                        "ori",
+                        "cpos",
                     ];
                     let rd_lut = vec![
                         "rd",
@@ -2224,6 +2226,7 @@ where
                         "dir",
                         "raydir",
                         "ray_dir",
+                        "ray",
                     ];
                     let mut fdef = fdef.clone();
                     handle_param(&mut fdef, ro_lut, "(i.ro_w + _Offset) * _Offset.w");
