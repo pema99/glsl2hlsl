@@ -1928,14 +1928,14 @@ where
                     };
 
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float4 frag (v2f i) : SV_Target\n");
+                    let _ = f.write_str("float4 frag (v2f vertex_output) : SV_Target\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("{\n");
                     add_indent();
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!("float2 {} = i.uv;\n", uv));
+                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv;\n", uv));
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
@@ -2229,8 +2229,8 @@ where
                         "ray",
                     ];
                     let mut fdef = fdef.clone();
-                    handle_param(&mut fdef, ro_lut, "((facing > 0 ? i.hitPos_w : i.ro_w) + _Offset) * _Offset.w");
-                    handle_param(&mut fdef, rd_lut, "normalize(i.hitPos_w - i.ro_w)");
+                    handle_param(&mut fdef, ro_lut, "((facing > 0 ? vertex_output.hitPos_w : vertex_output.ro_w) + _Offset) * _Offset.w");
+                    handle_param(&mut fdef, rd_lut, "normalize(vertex_output.hitPos_w - vertex_output.ro_w)");
 
                     // Normal handling
                     let frag = match &fdef.prototype.parameters[0] {
@@ -2243,14 +2243,14 @@ where
                     };
 
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float4 frag (v2f i, float facing : VFACE) : SV_Target\n");
+                    let _ = f.write_str("float4 frag (v2f vertex_output, float facing : VFACE) : SV_Target\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("{\n");
                     add_indent();
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!("float2 {} = i.uv;\n", uv));
+                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv;\n", uv));
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
