@@ -2215,6 +2215,7 @@ where
                         "ray_ori",
                         "ori",
                         "cpos",
+                        "rpos",
                     ];
                     let rd_lut = vec![
                         "rd",
