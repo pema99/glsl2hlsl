@@ -8,6 +8,9 @@ use glsl::syntax::*;
 use super::typechecker::*;
 
 pub fn transpile(input: String, raymarch: bool) -> String {
+
+    clear_sym();
+
     // Preprocessor step
     let (glsl, defs) = process_macros(input);
 
@@ -2208,6 +2211,8 @@ where
                         "ray_origin",
                         "start",
                         "from",
+                        "rayori",
+                        "ray_ori",
                     ];
                     let rd_lut = vec![
                         "rd",
@@ -2217,6 +2222,8 @@ where
                         "raydir",
                         "ray_dir",
                         "dir",
+                        "raydir",
+                        "ray_dir",
                     ];
                     let mut fdef = fdef.clone();
                     handle_param(&mut fdef, ro_lut, "(i.ro_w + _Offset) * _Offset.w");

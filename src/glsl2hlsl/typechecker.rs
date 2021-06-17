@@ -26,6 +26,11 @@ pub fn pop_sym() {
         SYM_TABLE.pop();
     }
 }
+pub fn clear_sym() {
+    unsafe {
+        SYM_TABLE.clear();
+    }
+}
 pub fn lookup_sym(name: &str) -> Option<TypeKind> {
     unsafe {
         SYM_TABLE
