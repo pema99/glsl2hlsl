@@ -1980,7 +1980,7 @@ fn find_param<'a>(
             Statement::Simple(sstmt) => match **sstmt {
                 SimpleStatement::Declaration(Declaration::InitDeclaratorList(ref mut decl)) => {
                     if let Some(ref name) = decl.head.name {
-                        if lut.contains(&name.as_str()) {
+                        if lut.contains(&name.0.to_lowercase().as_str()) {
                             Some(&mut decl.head)
                         } else {
                             None
