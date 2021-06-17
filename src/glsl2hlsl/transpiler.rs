@@ -2229,7 +2229,7 @@ where
                         "ray",
                     ];
                     let mut fdef = fdef.clone();
-                    handle_param(&mut fdef, ro_lut, "(i.ro_w + _Offset) * _Offset.w");
+                    handle_param(&mut fdef, ro_lut, "((facing > 0 ? i.hitPos_w : i.ro_w) + _Offset) * _Offset.w");
                     handle_param(&mut fdef, rd_lut, "normalize(i.hitPos_w - i.ro_w)");
 
                     // Normal handling
@@ -2243,7 +2243,7 @@ where
                     };
 
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float4 frag (v2f i) : SV_Target\n");
+                    let _ = f.write_str("float4 frag (v2f i, float facing : VFACE) : SV_Target\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("{\n");
                     add_indent();
