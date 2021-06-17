@@ -7,7 +7,7 @@ use glsl::syntax::*;
 
 use super::typechecker::*;
 
-pub fn transpile(input: String) -> String {
+pub fn transpile(input: String, raymarch: bool) -> String {
     // Preprocessor step
     let (glsl, defs) = process_macros(input);
 
@@ -16,7 +16,11 @@ pub fn transpile(input: String) -> String {
         Err(a) => a.info.clone(),
         _ => {
             let mut s = String::new();
-            show_translation_unit(&mut s, &stage.unwrap());
+            if raymarch {
+                show_translation_unit_raymarch(&mut s, &stage.unwrap());
+            } else {
+                show_translation_unit(&mut s, &stage.unwrap());
+            }
             replace_macros(s, defs)
         }
     }
@@ -1903,8 +1907,7 @@ where
                 return o;
             }
 
-",
-    );
+");
 
     for ed in &(tu.0).0 {
         match ed {
@@ -1912,6 +1915,314 @@ where
                 if fdef.prototype.name.0.as_str() == "mainImage" {
                     push_sym();
 
+                    let frag = match &fdef.prototype.parameters[0] {
+                        FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
+                        _ => panic!(),
+                    };
+                    let uv = match &fdef.prototype.parameters[1] {
+                        FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
+                        _ => panic!(),
+                    };
+
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_str("float4 frag (v2f i) : SV_Target\n");
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_str("{\n");
+                    add_indent();
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_fmt(format_args!("float2 {} = i.uv;\n", uv));
+                    for st in &fdef.statement.statement_list {
+                        show_statement(f, st, true);
+                    }
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_fmt(format_args!(
+                        "if (_GammaCorrect) {}.rgb = pow({}.rgb, 2.2);\n",
+                        frag, frag
+                    ));
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_fmt(format_args!("return {};\n", frag));
+                    sub_indent();
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_str("}\n");
+
+                    pop_sym();
+                } else {
+                    show_external_declaration(f, ed);
+                }
+            }
+            _ => show_external_declaration(f, ed),
+        };
+    }
+
+    let _ = f.write_str(
+        "            ENDCG
+        }
+    }
+}",
+    );
+}
+
+// Raymarching handling stuff
+fn find_param<'a>(
+    fdef: &'a mut FunctionDefinition,
+    lut: Vec<&str>,
+) -> Option<&'a mut SingleDeclaration> {
+    fn get_statement_decls<'a>(
+        stmt: &'a mut Statement,
+        lut: &Vec<&str>,
+    ) -> Option<&'a mut SingleDeclaration> {
+        match stmt {
+            Statement::Simple(sstmt) => match **sstmt {
+                SimpleStatement::Declaration(Declaration::InitDeclaratorList(ref mut decl)) => {
+                    if let Some(ref name) = decl.head.name {
+                        if lut.contains(&name.as_str()) {
+                            Some(&mut decl.head)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                SimpleStatement::Selection(ref mut sel) => match sel.rest {
+                    SelectionRestStatement::Statement(ref mut stmt) => {
+                        get_statement_decls(stmt, lut)
+                    }
+                    SelectionRestStatement::Else(ref mut t, ref mut f) => {
+                        get_statement_decls(t, lut).or(get_statement_decls(f, lut))
+                    }
+                },
+                SimpleStatement::Switch(ref mut sw) => sw
+                    .body
+                    .iter_mut()
+                    .find_map(|stmt| get_statement_decls(stmt, lut)),
+                SimpleStatement::Iteration(ref mut it) => match it {
+                    IterationStatement::While(_, stmt)
+                    | IterationStatement::DoWhile(stmt, _)
+                    | IterationStatement::For(_, _, stmt) => get_statement_decls(stmt, lut),
+                },
+                _ => None,
+            },
+            Statement::Compound(cstmt) => cstmt
+                .statement_list
+                .iter_mut()
+                .find_map(|stmt| get_statement_decls(stmt, lut)),
+        }
+    };
+
+    fdef.statement
+        .statement_list
+        .iter_mut()
+        .find_map(|stmt| get_statement_decls(stmt, &lut))
+}
+
+fn remove_param(fdef: &mut FunctionDefinition, name: &str) {
+    fn remove_param_stmt(stmt: &mut Statement, name: &str) -> bool {
+        match stmt {
+            Statement::Simple(decl) => match **decl {
+                // Remove
+                SimpleStatement::Expression(Some(Expr::Assignment(ref l, ref op, ref _r))) => {
+                    if *op == AssignmentOp::Equal {
+                        match **l {
+                            Expr::Variable(ref id) => id.0.as_str() == name,
+                            Expr::Dot(ref e, _) | Expr::Bracket(ref e, _) => match **e {
+                                Expr::Variable(ref id) => id.0.as_str() == name,
+                                _ => false,
+                            },
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    }
+                }
+                SimpleStatement::Switch(ref mut sw) => {
+                    remove_param_stmt_vec(&mut sw.body, name);
+                    false
+                }
+                SimpleStatement::Selection(ref mut sel) => match sel.rest {
+                    SelectionRestStatement::Statement(ref mut stmt) => {
+                        if let Statement::Compound(ref mut cstmt) = **stmt {
+                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                        }
+                        remove_param_stmt(stmt, name)
+                    }
+                    SelectionRestStatement::Else(ref mut t, ref mut f) => {
+                        if let Statement::Compound(ref mut cstmt) = **t {
+                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                        }
+                        if let Statement::Compound(ref mut cstmt) = **f {
+                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                        }
+                        if remove_param_stmt(t, name) {
+                            *t = Box::new(Statement::parse("0xDEADBEEF;").unwrap())
+                        } else if remove_param_stmt(f, name) {
+                            *f = Box::new(Statement::parse("0xDEADBEEF;").unwrap())
+                        }
+                        false
+                    }
+                },
+                SimpleStatement::Iteration(ref mut it) => match it {
+                    IterationStatement::While(_, stmt)
+                    | IterationStatement::DoWhile(stmt, _)
+                    | IterationStatement::For(_, _, stmt) => {
+                        if let Statement::Compound(ref mut cstmt) = **stmt {
+                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                        }
+                        remove_param_stmt(stmt, name)
+                    }
+                },
+                _ => false,
+            },
+            Statement::Compound(cstmt) => {
+                remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                false
+            }
+        }
+    }
+
+    fn remove_param_stmt_vec(stmts: &mut Vec<Statement>, name: &str) {
+        stmts
+            .drain_filter(|x| remove_param_stmt(x, name))
+            .for_each(|_x| ());
+    }
+
+    remove_param_stmt_vec(&mut fdef.statement.statement_list, name);
+}
+
+fn handle_param(fdef: &mut FunctionDefinition, lut: Vec<&str>, rep: &str) {
+    let name = {
+        let param = find_param(fdef, lut);
+
+        if let Some(p) = param {
+            p.initializer = Some(Initializer::parse(rep).unwrap());
+            p.name.clone().map(|x| x.0.clone())
+        } else {
+            None
+        }
+    };
+
+    if let Some(name) = name {
+        remove_param(fdef, name.as_str())
+    }
+}
+
+pub fn show_translation_unit_raymarch<F>(f: &mut F, tu: &TranslationUnit)
+where
+    F: Write,
+{
+    let _ = f.write_str(
+        "Shader \"Converted/Template\"
+{
+    Properties
+    {
+        [Header(General)]
+        _MainTex (\"iChannel0\", 2D) = \"white\" {}
+        _SecondTex (\"iChannel1\", 2D) = \"white\" {}
+        _ThirdTex (\"iChannel2\", 2D) = \"white\" {}
+        _FourthTex (\"iChannel3\", 2D) = \"white\" {}
+        _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
+        [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1
+
+        [Header(Raymarching)]
+        [ToggleUI] _WorldSpace (\"World Space Marching\", Float) = 0
+        _Offset (\"Offset (W=Scale)\", Vector) = (0, 0, 0, 1)
+    }
+    SubShader
+    {
+        Pass
+        {
+            Cull Off
+
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include \"UnityCG.cginc\"
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct v2f
+            {
+                float2 uv : TEXCOORD0;
+                float4 vertex : SV_POSITION;
+                float3 ro_w : TEXCOORD1;
+                float3 hitPos_w : TEXCOORD2;
+            };
+
+            sampler2D _MainTex;   float4 _MainTex_TexelSize;
+            sampler2D _SecondTex; float4 _SecondTex_TexelSize;
+            sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
+            sampler2D _FourthTex; float4 _FourthTex_TexelSize;
+            float4 _Mouse;
+            float _GammaCorrect;
+            float _WorldSpace;
+            float4 _Offset;
+
+            // GLSL Compatability macros
+            #define iFrame (floor(_Time.y / 60))
+            #define iResolution float3(1, 1, 1)
+            #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
+            #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
+            #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
+
+            v2f vert (appdata v)
+            {
+                v2f o;
+                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.uv =  v.uv;
+
+                if (_WorldSpace)
+                {
+                    o.ro_w = _WorldSpaceCameraPos;
+                    o.hitPos_w = mul(unity_ObjectToWorld, v.vertex);
+                }
+                else
+                {
+                    o.ro_w = mul(unity_WorldToObject, float4(_WorldSpaceCameraPos, 1));
+                    o.hitPos_w = v.vertex;
+                }
+
+                return o;
+            }
+
+");
+
+    for ed in &(tu.0).0 {
+        match ed {
+            ExternalDeclaration::FunctionDefinition(fdef) => {
+                if fdef.prototype.name.0.as_str() == "mainImage" {
+                    push_sym();
+
+                    // Handle marching
+                    let ro_lut = vec![
+                        "ro",
+                        "org",
+                        "origin",
+                        "rayorigin",
+                        "ray_origin",
+                        "start",
+                        "from",
+                    ];
+                    let rd_lut = vec![
+                        "rd",
+                        "rdir",
+                        "raydirection",
+                        "ray_direction",
+                        "raydir",
+                        "ray_dir",
+                        "dir",
+                    ];
+                    let mut fdef = fdef.clone();
+                    handle_param(&mut fdef, ro_lut, "(i.ro_w + _Offset) * _Offset.w");
+                    handle_param(&mut fdef, rd_lut, "normalize(i.hitPos_w - i.ro_w)");
+
+                    // Normal handling
                     let frag = match &fdef.prototype.parameters[0] {
                         FunctionParameterDeclaration::Named(_, name) => name.ident.ident.0.as_str(),
                         _ => panic!(),

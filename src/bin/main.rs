@@ -22,7 +22,7 @@ fn main() {
         Err(a) => println!("Err: {}", a.info),
         _ => {
             let mut s = String::new();
-            show_translation_unit(&mut s, &stage.unwrap());
+            show_translation_unit_raymarch(&mut s, &stage.unwrap());
             s = replace_macros(s, defs);
 
             let mut arg = args[1].clone();

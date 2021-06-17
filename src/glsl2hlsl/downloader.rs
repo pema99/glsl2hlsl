@@ -68,10 +68,10 @@ fn generate_guid(shader: &Shader) -> String {
     res
 }
 
-fn get_shader_file(shader: &Shader) -> ShaderFile {
+fn get_shader_file(shader: &Shader, raymarch: bool) -> ShaderFile {
     ShaderFile {
         name: format!("{}.shader", shader.info.name.clone()),
-        contents: transpile(shader.renderpass[0].code.clone()),
+        contents: transpile(shader.renderpass[0].code.clone(), raymarch),
     }
 }
 
@@ -165,9 +165,9 @@ Material:
     }
 }
 
-pub fn get_files(shader: &Shader) -> Vec<ShaderFile> {
+pub fn get_files(shader: &Shader, raymarch: bool) -> Vec<ShaderFile> {
     let shader_guid = generate_guid(shader);
-    let shader_file = get_shader_file(shader);
+    let shader_file = get_shader_file(shader, raymarch);
     let shader_meta_file = get_shader_meta_file(shader, &shader_guid);
 
     let mat_file = get_material_file(shader, &shader_guid);
