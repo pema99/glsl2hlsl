@@ -638,6 +638,17 @@ where
                 return;
             }
 
+            // Handle vector equality
+            if (*op == BinaryOp::Equal || *op == BinaryOp::NonEqual) && (is_vector(l) || is_vector(r)) {
+                if *op == BinaryOp::NonEqual { let _ = f.write_str("!"); }
+                let _ = f.write_str("all((");
+                show_expr(f, &l);
+                let _ = f.write_str(") == (");
+                show_expr(f, &r);
+                let _ = f.write_str("))");
+                return;
+            }
+
             // Note: all binary ops are left-to-right associative (<= for left part)
             if l.precedence() <= op.precedence() {
                 show_expr(f, &l);
@@ -2082,6 +2093,7 @@ where
                         "ori",
                         "cpos",
                         "rpos",
+                        "eye",
                     ];
                     let rd_lut = vec![
                         "rd",
