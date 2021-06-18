@@ -1566,6 +1566,7 @@ where
     F: Write,
 {
     let handle_define = |ident: &Identifier, value: &String| {
+        let paren = value.trim().starts_with("(") && value.trim().ends_with(")");
         let mut res = String::from(value);
         if let Ok(stmt) = Statement::parse(value) {
             res.clear();
@@ -1582,7 +1583,6 @@ where
             if let Some(ty) = get_expr_type(&expr) {
                 add_sym(ident.0.clone(), ty);
             }
-
             // TODO: This should be recursive
             match expr {
                 Expr::Variable(id) => show_expr(
@@ -1592,7 +1592,11 @@ where
                 _ => show_expr(&mut res, &expr),
             };
         }
-        res
+        if paren {
+            format!("({})", res)
+        } else {
+            res
+        }
     };
 
     match *pd {
@@ -1862,11 +1866,19 @@ where
             float _GammaCorrect;
 
             // GLSL Compatability macros
-            #define iFrame (floor(_Time.y / 60))
-            #define iResolution float3(1, 1, 1)
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
+            #define iResolution float3(1, 1, 1)
+            #define iFrame (floor(_Time.y / 60))
+            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, Time.y)
+            #define iDate float4(2020, 6, 18, 30)
+            #define iSampleRate (44100)
+            #define iChannelResolution float4x3(                    \\
+                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0,  \\
+                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0,  \\
+                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0,  \\
+                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0)
 
             // Global access to uv data
             static v2f vertex_output;
@@ -2011,11 +2023,19 @@ where
             float4 _Offset;
 
             // GLSL Compatability macros
-            #define iFrame (floor(_Time.y / 60))
-            #define iResolution float3(1, 1, 1)
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
+            #define iResolution float3(1, 1, 1)
+            #define iFrame (floor(_Time.y / 60))
+            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, Time.y)
+            #define iDate float4(2020, 6, 18, 30)
+            #define iSampleRate (44100)
+            #define iChannelResolution float4x3(                    \\
+                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0,  \\
+                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0,  \\
+                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0,  \\
+                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0)
 
             // Global access to uv data
             static v2f vertex_output;
