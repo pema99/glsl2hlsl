@@ -72,7 +72,6 @@ pub fn escape_invalid_glsl_id(s: &str) -> &str {
         "fxgroup" => "fxgroup_",
         "GeometryShader" => "GeometryShader_",
         "groupshared" => "groupshared_",
-        "hull" => "hull_",
         "HullShader" => "HullShader_",
         "inline" => "inline_",
         "InputPatch" => "InputPatch_",
