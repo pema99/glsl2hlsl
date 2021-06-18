@@ -376,7 +376,7 @@ fn show_arrayed_identifier<F>(f: &mut F, a: &ArrayedIdentifier)
 where
     F: Write,
 {
-    let _ = write!(f, "{}", a.ident);
+    let _ = write!(f, "{}", escape_invalid_glsl_id(a.ident.as_str()));
 
     if let Some(ref arr_spec) = a.array_spec {
         show_array_spec(f, arr_spec);
