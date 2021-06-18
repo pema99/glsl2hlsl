@@ -1,19 +1,37 @@
 # [Online demo here (pema99.github.io/glsl2hlsl)](https://pema99.github.io/glsl2hlsl)
 
 # glsl2hlsl
-Uber cursed WIP shadertoy to Unity converter
-Y'all ever write your entire transpiler as a single 2000 line file
+Slightly cursed WIP ShaderToy to Unity (ShaderLab) transpiler.
 
-Don't look at the code, seriously you will have an aneurism
+Sorry if the code gives you an aneurism.
 
-# Need to implement
-- Better typechecking for other types than matrices
-- Better support for structs
-- Multiline macros
-- Refactor omfg
+# Features
+- Converts a fairly decent chunk of shadertoy shaders to usable unity shaders
+- Can attempt to automatically find and extract properties from the shader and put then in the inspector
+- Can attempt to automatically make raymarched/raytraced shaders 3D
+- Can download shaders directly from the shadertoy API given a link
+- Synthesizes a usable unity material and .meta file when using download feature
+
+# Some cool shaders to try it on
+[Fractal land by Kali](https://www.shadertoy.com/view/XsBXWt)
+
+[Protean clouds by IQ](https://www.shadertoy.com/view/3l23Rh)
+
+[Fractal pyramid by bradjamesgrant](https://www.shadertoy.com/view/tsXBzS)
+
+[Phantom star by kasari39](https://www.shadertoy.com/view/ttKGDt)
+
+# To do
+- Better support for preprocessor directives in any context
+- Multiline macro support
+- Implement various missing sampler-related functions such as textureSize, textureLodOffset etc.
+- A few properties defined by shadertoy (iDate, iChannelResolution...) are missing
+- Refactor
 
 # Build
 `cargo build`
 
 # Usage
 `glsl2hlsl <fileToConvert>`
+
+Or just use the website :P
