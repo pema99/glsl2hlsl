@@ -2094,6 +2094,8 @@ where
                         "cpos",
                         "rpos",
                         "eye",
+                        "raypos",
+                        "rayposition",
                     ];
                     let rd_lut = vec![
                         "rd",
