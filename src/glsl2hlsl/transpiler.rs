@@ -114,7 +114,7 @@ where
         "iChannel1" => "_SecondTex",
         "iChannel2" => "_ThirdTex",
         "iChannel3" => "_FourthTex",
-        "gl_FragCoord" => "i.uv",
+        "gl_FragCoord" => "vertex_output.uv",
         "iMouse" => "_Mouse",
         //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
         a => a,
