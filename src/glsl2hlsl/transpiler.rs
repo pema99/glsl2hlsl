@@ -116,8 +116,9 @@ where
         "iChannel3" => "_FourthTex",
         "gl_FragCoord" => "vertex_output.uv",
         "iMouse" => "_Mouse",
+
         //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
-        a => a,
+        a => escape_invalid_glsl_id(a),
     };
     let _ = f.write_str(rep);
 }
