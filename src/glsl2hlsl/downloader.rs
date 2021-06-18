@@ -48,10 +48,7 @@ pub struct ShaderFile {
 
 pub fn download_shader(id: &str) -> Result<Shader, ureq::Error> {
     let url = format!("https://www.shadertoy.com/api/v1/shaders/{}?key=NtHtMm", id);
-    let shader = ureq::get(&url)
-        .call()?
-        .into_json::<ShaderContainer>()?
-        .Shader;
+    let shader = ureq::get(&url).call()?.into_json::<ShaderContainer>()?.Shader;
     Ok(shader)
 }
 
@@ -68,10 +65,10 @@ fn generate_guid(shader: &Shader) -> String {
     res
 }
 
-fn get_shader_file(shader: &Shader, raymarch: bool) -> ShaderFile {
+fn get_shader_file(shader: &Shader, extract_props: bool, raymarch: bool) -> ShaderFile {
     ShaderFile {
         name: format!("{}.shader", shader.info.name.clone()),
-        contents: transpile(shader.renderpass[0].code.clone(), raymarch),
+        contents: transpile(shader.renderpass[0].code.clone(), extract_props, raymarch),
     }
 }
 
@@ -165,9 +162,9 @@ Material:
     }
 }
 
-pub fn get_files(shader: &Shader, raymarch: bool) -> Vec<ShaderFile> {
+pub fn get_files(shader: &Shader, extract_props: bool, raymarch: bool) -> Vec<ShaderFile> {
     let shader_guid = generate_guid(shader);
-    let shader_file = get_shader_file(shader, raymarch);
+    let shader_file = get_shader_file(shader, extract_props, raymarch);
     let shader_meta_file = get_shader_meta_file(shader, &shader_guid);
 
     let mat_file = get_material_file(shader, &shader_guid);

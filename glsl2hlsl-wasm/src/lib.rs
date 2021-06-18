@@ -21,14 +21,14 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub fn transpile(input: String, raymarch: bool) -> String {
-    glsl2hlsl::transpile(input, raymarch)
+pub fn transpile(input: String, extract_props: bool, raymarch: bool) -> String {
+    glsl2hlsl::transpile(input, extract_props, raymarch)
 }
 
 #[wasm_bindgen]
-pub fn download(json: String, raymarch: bool) {
+pub fn download(json: String, extract_props: bool, raymarch: bool) {
     let shader = make_shader(&json).unwrap();
-    let files = get_files(&shader, raymarch);
+    let files = get_files(&shader, extract_props, raymarch);
     for f in files.iter() {
         unsafe {
             download_file(&f.name, &f.contents);

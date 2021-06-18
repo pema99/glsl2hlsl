@@ -3,6 +3,7 @@
 mod downloader;
 pub use downloader::*;
 
+mod preprocessor;
 mod typechecker;
 
 mod transpiler;

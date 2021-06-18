@@ -1,28 +1,30 @@
-use std::collections::HashMap;
 use std::fmt::Write;
 use std::iter;
 
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
 
+use super::preprocessor::*;
 use super::typechecker::*;
 
-pub fn transpile(input: String, raymarch: bool) -> String {
-
+pub fn transpile(input: String, extract_props: bool, raymarch: bool) -> String {
     clear_sym();
 
     // Preprocessor step
-    let (glsl, defs) = process_macros(input);
+    let (glsl, defs, mut props) = process_macros(input, extract_props);
 
-    let stage = ShaderStage::parse(glsl);
-    match &stage {
+    let mut stage = ShaderStage::parse(glsl);
+    match &mut stage {
         Err(a) => a.info.clone(),
-        _ => {
+        Ok(stage) => {
+            let mut globals = process_globals(stage, extract_props);
+            props.append(&mut globals);
+
             let mut s = String::new();
             if raymarch {
-                show_translation_unit_raymarch(&mut s, &stage.unwrap());
+                show_translation_unit_raymarch(&mut s, &stage, props);
             } else {
-                show_translation_unit(&mut s, &stage.unwrap());
+                show_translation_unit(&mut s, &stage, props);
             }
             replace_macros(s, defs)
         }
@@ -45,63 +47,6 @@ fn get_indent() -> String {
     unsafe { iter::repeat("    ").take(INDENT_LEVEL).collect::<String>() }
 }
 
-// Need this hack in an attempt to support the preprocessor since GLSL
-// crate doesn't really support it.
-pub fn process_macros(s: String) -> (String, HashMap<usize, String>) {
-    let mut buff = String::new();
-    let mut defs: HashMap<usize, String> = HashMap::new();
-
-    push_sym();
-    for (i, line) in s.lines().enumerate() {
-        if line.trim_start().starts_with("#") {
-            // Marker declaration
-            buff.push_str(format!("float __LINE{}__;\n", i).as_str());
-            let mut rep = String::new();
-            show_preprocessor(&mut rep, &Preprocessor::parse(line.trim_start()).unwrap());
-            defs.insert(i, rep);
-        } else {
-            buff.push_str(line);
-            buff.push_str("\n");
-        }
-    }
-
-    (buff, defs)
-}
-
-// Put back macros
-pub fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
-    let mut buff = String::new();
-
-    for line in s.lines() {
-        let trimmed = line.trim_start();
-
-        if trimmed.starts_with("float __LINE") || trimmed.starts_with("static float __LINE") {
-            let skip = if trimmed.starts_with("static") {
-                19
-            } else {
-                12
-            };
-            let num: usize = trimmed
-                .chars()
-                .skip(skip)
-                .take_while(|a| a.is_numeric())
-                .collect::<String>()
-                .parse()
-                .unwrap();
-
-            // TODO: Keep preceeding whitespace
-            if let Some(rep) = defs.get(&num) {
-                buff.push_str(rep.as_str().trim_start());
-            }
-        } else {
-            buff.push_str(line);
-            buff.push_str("\n");
-        }
-    }
-
-    buff
-}
-
 // Precedence information for transpiling parentheses properly
 trait HasPrecedence {
     fn precedence(&self) -> u32;
@@ -122,11 +67,7 @@ impl HasPrecedence for Expr {
             Self::Binary(op, _, _) => op.precedence(),
             Self::Ternary(_, _, _) => 15,
             Self::Assignment(_, op, _) => op.precedence(),
-            Self::Bracket(_, _)
-            | Self::FunCall(_, _)
-            | Self::Dot(_, _)
-            | Self::PostInc(_)
-            | Self::PostDec(_) => 2,
+            Self::Bracket(_, _) | Self::FunCall(_, _) | Self::Dot(_, _) | Self::PostInc(_) | Self::PostDec(_) => 2,
             Self::Comma(_, _) => 17,
         }
     }
@@ -739,7 +680,7 @@ where
         Expr::Assignment(ref v, ref op, ref e) => {
             // Handle mat mult
             if *op == AssignmentOp::Mult && is_matrix(e) {
-                show_expr(f, &v); //TODO: Precedence
+                show_expr(f, &v);
                 let _ = f.write_str(" = mul(");
                 show_expr(f, &e);
                 let _ = f.write_str(",");
@@ -1332,13 +1273,11 @@ where
             FunctionParameterDeclaration::Named(_, decl) => match decl.ty.ty {
                 TypeSpecifierNonArray::Struct(_) | TypeSpecifierNonArray::TypeName(_) => {}
                 _ => {
-                    let assign = Statement::Simple(Box::new(SimpleStatement::Expression(Some(
-                        Expr::Assignment(
-                            Box::new(Expr::Variable(decl.ident.ident.clone())),
-                            AssignmentOp::Equal,
-                            Box::new(Expr::IntConst(0)),
-                        ),
-                    ))));
+                    let assign = Statement::Simple(Box::new(SimpleStatement::Expression(Some(Expr::Assignment(
+                        Box::new(Expr::Variable(decl.ident.ident.clone())),
+                        AssignmentOp::Equal,
+                        Box::new(Expr::IntConst(0)),
+                    )))));
                     stmts.statement_list.insert(0, assign);
                 }
             },
@@ -1599,7 +1538,7 @@ where
     }
 }
 
-fn show_preprocessor<F>(f: &mut F, pp: &Preprocessor)
+pub fn show_preprocessor<F>(f: &mut F, pp: &Preprocessor)
 where
     F: Write,
 {
@@ -1655,12 +1594,8 @@ where
         res
     };
 
-    // TODO: Defines
     match *pd {
-        PreprocessorDefine::ObjectLike {
-            ref ident,
-            ref value,
-        } => {
+        PreprocessorDefine::ObjectLike { ref ident, ref value } => {
             let res = handle_define(ident, value);
 
             let _ = write!(f, "#define {} {}\n", ident, res);
@@ -1835,7 +1770,7 @@ where
     let _ = f.write_str("\n");
 }
 
-fn show_external_declaration<F>(f: &mut F, ed: &ExternalDeclaration)
+fn show_external_declaration<F>(f: &mut F, ed: &ExternalDeclaration, props: &Vec<ShaderProp>)
 where
     F: Write,
 {
@@ -1846,11 +1781,23 @@ where
             show_function_definition(f, fd);
             let _ = f.write_str("\n");
         }
-        ExternalDeclaration::Declaration(ref d) => show_declaration(f, d, true, true),
+        ExternalDeclaration::Declaration(ref d) => {
+            let global = match *d {
+                Declaration::InitDeclaratorList(ref list) => !props.iter().any(|x| {
+                    if let Some(ref name) = list.head.name {
+                        x.name == name.as_str()
+                    } else {
+                        false
+                    }
+                }),
+                _ => true,
+            };
+            show_declaration(f, d, true, global)
+        }
     }
 }
 
-pub fn show_translation_unit<F>(f: &mut F, tu: &TranslationUnit)
+fn show_translation_unit<F>(f: &mut F, tu: &TranslationUnit, props: Vec<ShaderProp>)
 where
     F: Write,
 {
@@ -1864,8 +1811,25 @@ where
         _ThirdTex (\"iChannel2\", 2D) = \"white\" {}
         _FourthTex (\"iChannel3\", 2D) = \"white\" {}
         _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
-        [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1
+        [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1",
+    );
+
+    // Add props
+    if props.len() > 0 {
+        let _ = f.write_str("\n\n        [Header(Extracted)]\n");
+        for prop in props.iter() {
+            let _ = f.write_str("        ");
+            if prop.toggle {
+                let _ = f.write_str("[ToggleUI] ");
+            }
+            let _ = f.write_fmt(format_args!(
+                "{} (\"{}\", {}) = {}\n",
+                prop.name, prop.name, prop.prop_type, prop.val
+            ));
+        }
     }
+
+    let _ = f.write_str("\n    }
     SubShader
     {
         Pass
@@ -1952,10 +1916,10 @@ where
 
                     pop_sym();
                 } else {
-                    show_external_declaration(f, ed);
+                    show_external_declaration(f, ed, &props);
                 }
             }
-            _ => show_external_declaration(f, ed),
+            _ => show_external_declaration(f, ed, &props),
         };
     }
 
@@ -1967,151 +1931,7 @@ where
     );
 }
 
-// Raymarching handling stuff
-fn find_param<'a>(
-    fdef: &'a mut FunctionDefinition,
-    lut: Vec<&str>,
-) -> Option<&'a mut SingleDeclaration> {
-    fn get_statement_decls<'a>(
-        stmt: &'a mut Statement,
-        lut: &Vec<&str>,
-    ) -> Option<&'a mut SingleDeclaration> {
-        match stmt {
-            Statement::Simple(sstmt) => match **sstmt {
-                SimpleStatement::Declaration(Declaration::InitDeclaratorList(ref mut decl)) => {
-                    if let Some(ref name) = decl.head.name {
-                        if lut.contains(&name.0.to_lowercase().as_str()) {
-                            Some(&mut decl.head)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }
-                SimpleStatement::Selection(ref mut sel) => match sel.rest {
-                    SelectionRestStatement::Statement(ref mut stmt) => {
-                        get_statement_decls(stmt, lut)
-                    }
-                    SelectionRestStatement::Else(ref mut t, ref mut f) => {
-                        get_statement_decls(t, lut).or(get_statement_decls(f, lut))
-                    }
-                },
-                SimpleStatement::Switch(ref mut sw) => sw
-                    .body
-                    .iter_mut()
-                    .find_map(|stmt| get_statement_decls(stmt, lut)),
-                SimpleStatement::Iteration(ref mut it) => match it {
-                    IterationStatement::While(_, stmt)
-                    | IterationStatement::DoWhile(stmt, _)
-                    | IterationStatement::For(_, _, stmt) => get_statement_decls(stmt, lut),
-                },
-                _ => None,
-            },
-            Statement::Compound(cstmt) => cstmt
-                .statement_list
-                .iter_mut()
-                .find_map(|stmt| get_statement_decls(stmt, lut)),
-        }
-    };
-
-    fdef.statement
-        .statement_list
-        .iter_mut()
-        .find_map(|stmt| get_statement_decls(stmt, &lut))
-}
-
-fn remove_param(fdef: &mut FunctionDefinition, name: &str) {
-    fn remove_param_stmt(stmt: &mut Statement, name: &str) -> bool {
-        match stmt {
-            Statement::Simple(decl) => match **decl {
-                // Remove
-                SimpleStatement::Expression(Some(Expr::Assignment(ref l, ref op, ref _r))) => {
-                    if *op == AssignmentOp::Equal {
-                        match **l {
-                            Expr::Variable(ref id) => id.0.as_str() == name,
-                            Expr::Dot(ref e, _) | Expr::Bracket(ref e, _) => match **e {
-                                Expr::Variable(ref id) => id.0.as_str() == name,
-                                _ => false,
-                            },
-                            _ => false,
-                        }
-                    } else {
-                        false
-                    }
-                }
-                SimpleStatement::Switch(ref mut sw) => {
-                    remove_param_stmt_vec(&mut sw.body, name);
-                    false
-                }
-                SimpleStatement::Selection(ref mut sel) => match sel.rest {
-                    SelectionRestStatement::Statement(ref mut stmt) => {
-                        if let Statement::Compound(ref mut cstmt) = **stmt {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
-                        }
-                        remove_param_stmt(stmt, name)
-                    }
-                    SelectionRestStatement::Else(ref mut t, ref mut f) => {
-                        if let Statement::Compound(ref mut cstmt) = **t {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
-                        }
-                        if let Statement::Compound(ref mut cstmt) = **f {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
-                        }
-                        if remove_param_stmt(t, name) {
-                            *t = Box::new(Statement::parse("0xDEADBEEF;").unwrap())
-                        } else if remove_param_stmt(f, name) {
-                            *f = Box::new(Statement::parse("0xDEADBEEF;").unwrap())
-                        }
-                        false
-                    }
-                },
-                SimpleStatement::Iteration(ref mut it) => match it {
-                    IterationStatement::While(_, stmt)
-                    | IterationStatement::DoWhile(stmt, _)
-                    | IterationStatement::For(_, _, stmt) => {
-                        if let Statement::Compound(ref mut cstmt) = **stmt {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
-                        }
-                        remove_param_stmt(stmt, name)
-                    }
-                },
-                _ => false,
-            },
-            Statement::Compound(cstmt) => {
-                remove_param_stmt_vec(&mut cstmt.statement_list, name);
-                false
-            }
-        }
-    }
-
-    fn remove_param_stmt_vec(stmts: &mut Vec<Statement>, name: &str) {
-        stmts
-            .drain_filter(|x| remove_param_stmt(x, name))
-            .for_each(|_x| ());
-    }
-
-    remove_param_stmt_vec(&mut fdef.statement.statement_list, name);
-}
-
-fn handle_param(fdef: &mut FunctionDefinition, lut: Vec<&str>, rep: &str) {
-    let name = {
-        let param = find_param(fdef, lut);
-
-        if let Some(p) = param {
-            p.initializer = Some(Initializer::parse(rep).unwrap());
-            p.name.clone().map(|x| x.0.clone())
-        } else {
-            None
-        }
-    };
-
-    if let Some(name) = name {
-        remove_param(fdef, name.as_str())
-    }
-}
-
-pub fn show_translation_unit_raymarch<F>(f: &mut F, tu: &TranslationUnit)
+fn show_translation_unit_raymarch<F>(f: &mut F, tu: &TranslationUnit, props: Vec<ShaderProp>)
 where
     F: Write,
 {
@@ -2130,8 +1950,25 @@ where
 
         [Header(Raymarching)]
         [ToggleUI] _WorldSpace (\"World Space Marching\", Float) = 0
-        _Offset (\"Offset (W=Scale)\", Vector) = (0, 0, 0, 1)
+        _Offset (\"Offset (W=Scale)\", Vector) = (0, 0, 0, 1)",
+    );
+
+    // Add props
+    if props.len() > 0 {
+        let _ = f.write_str("\n\n        [Header(Extracted)]\n");
+        for prop in props.iter() {
+            let _ = f.write_str("        ");
+            if prop.toggle {
+                let _ = f.write_str("[ToggleUI] ");
+            }
+            let _ = f.write_fmt(format_args!(
+                "{} (\"{}\", {}) = {}\n",
+                prop.name, prop.name, prop.prop_type, prop.val
+            ));
+        }
     }
+
+    let _ = f.write_str("\n    }
     SubShader
     {
         Pass
@@ -2230,8 +2067,16 @@ where
                         "ray",
                     ];
                     let mut fdef = fdef.clone();
-                    handle_param(&mut fdef, ro_lut, "((facing > 0 ? vertex_output.hitPos_w : vertex_output.ro_w) + _Offset) * _Offset.w");
-                    handle_param(&mut fdef, rd_lut, "normalize(vertex_output.hitPos_w - vertex_output.ro_w)");
+                    handle_raymarch_param(
+                        &mut fdef,
+                        ro_lut,
+                        "((facing > 0 ? vertex_output.hitPos_w : vertex_output.ro_w) + _Offset) * _Offset.w",
+                    );
+                    handle_raymarch_param(
+                        &mut fdef,
+                        rd_lut,
+                        "normalize(vertex_output.hitPos_w - vertex_output.ro_w)",
+                    );
 
                     // Normal handling
                     let frag = match &fdef.prototype.parameters[0] {
@@ -2268,10 +2113,10 @@ where
 
                     pop_sym();
                 } else {
-                    show_external_declaration(f, ed);
+                    show_external_declaration(f, ed, &props);
                 }
             }
-            _ => show_external_declaration(f, ed),
+            _ => show_external_declaration(f, ed, &props),
         };
     }
 

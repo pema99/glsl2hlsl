@@ -161,9 +161,7 @@ pub fn get_expr_type(e: &Expr) -> Option<TypeKind> {
                 (Some(_), _, Some(TypeKind::Scalar)) => l, // anything op scalar = scalar
                 (Some(TypeKind::Scalar), _, Some(_)) => r, // scalar op anything = scalar
                 (Some(TypeKind::Vector(_)), _, Some(TypeKind::Vector(_))) => l, // componentwise vector
-                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => {
-                    Some(TypeKind::Scalar)
-                } // matrix multiplication
+                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => Some(TypeKind::Scalar), // matrix multiplication
                 (Some(TypeKind::Matrix(_, _)), _, Some(TypeKind::Matrix(_, _))) => l, // componentwise matrix
                 (Some(TypeKind::Vector(_)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => l, // vector matrix mul
                 (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Vector(_))) => r, // matrix vector mul
@@ -259,24 +257,12 @@ pub fn typespec_to_typekind(ty: &TypeSpecifierNonArray) -> Option<TypeKind> {
         TypeSpecifierNonArray::Mat2 | TypeSpecifierNonArray::DMat2 => Some(TypeKind::Matrix(2, 2)),
         TypeSpecifierNonArray::Mat3 | TypeSpecifierNonArray::DMat3 => Some(TypeKind::Matrix(3, 3)),
         TypeSpecifierNonArray::Mat4 | TypeSpecifierNonArray::DMat4 => Some(TypeKind::Matrix(4, 4)),
-        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::DMat23 => {
-            Some(TypeKind::Matrix(2, 3))
-        }
-        TypeSpecifierNonArray::Mat24 | TypeSpecifierNonArray::DMat24 => {
-            Some(TypeKind::Matrix(2, 4))
-        }
-        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::DMat32 => {
-            Some(TypeKind::Matrix(3, 2))
-        }
-        TypeSpecifierNonArray::Mat34 | TypeSpecifierNonArray::DMat34 => {
-            Some(TypeKind::Matrix(3, 4))
-        }
-        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::DMat42 => {
-            Some(TypeKind::Matrix(4, 2))
-        }
-        TypeSpecifierNonArray::Mat43 | TypeSpecifierNonArray::DMat43 => {
-            Some(TypeKind::Matrix(4, 3))
-        }
+        TypeSpecifierNonArray::Mat23 | TypeSpecifierNonArray::DMat23 => Some(TypeKind::Matrix(2, 3)),
+        TypeSpecifierNonArray::Mat24 | TypeSpecifierNonArray::DMat24 => Some(TypeKind::Matrix(2, 4)),
+        TypeSpecifierNonArray::Mat32 | TypeSpecifierNonArray::DMat32 => Some(TypeKind::Matrix(3, 2)),
+        TypeSpecifierNonArray::Mat34 | TypeSpecifierNonArray::DMat34 => Some(TypeKind::Matrix(3, 4)),
+        TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::DMat42 => Some(TypeKind::Matrix(4, 2)),
+        TypeSpecifierNonArray::Mat43 | TypeSpecifierNonArray::DMat43 => Some(TypeKind::Matrix(4, 3)),
         TypeSpecifierNonArray::Struct(ref s) => {
             if let Some(id) = &s.name {
                 Some(TypeKind::Struct(id.0.clone()))
