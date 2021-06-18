@@ -156,7 +156,11 @@ fn extract_prop(id: &str, e: &Expr) -> Option<ShaderProp> {
         )),
         Some(Expr::FunCall(FunIdentifier::Identifier(ref fid), ref exps)) => match eval_vector_vals(fid, exps) {
             Some(vals) => {
-                let ctor = vals.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
+                let ctor = if vals.len() < 3 {
+                    vals.iter().chain(std::iter::repeat(&0.0)).map(|x| x.to_string()).take(3).collect::<Vec<_>>().join(",")
+                } else {
+                    vals.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")
+                };
                 Some(ShaderProp::new(
                     id.to_owned(),
                     "Vector".into(),
@@ -407,14 +411,17 @@ pub fn handle_raymarch_param(fdef: &mut FunctionDefinition, lut: Vec<&str>, rep:
         let param = find_param(fdef, lut);
 
         if let Some(p) = param {
+            let was_initalized = p.initializer.is_some();
             p.initializer = Some(Initializer::parse(rep).unwrap());
-            p.name.clone().map(|x| x.0.clone())
+            p.name.clone().map(|x| x.0.clone()).map(|x| (x, was_initalized))
         } else {
             None
         }
     };
 
-    if let Some(name) = name {
-        remove_param(fdef, name.as_str())
+    if let Some((name, was_initialized)) = name {
+        if was_initialized {
+            remove_param(fdef, name.as_str())
+        }
     }
 }
