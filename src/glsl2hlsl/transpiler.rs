@@ -1852,6 +1852,7 @@ where
                 float4 vertex : SV_POSITION;
             };
 
+            // Built-in properties
             sampler2D _MainTex;   float4 _MainTex_TexelSize;
             sampler2D _SecondTex; float4 _SecondTex_TexelSize;
             sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
@@ -1865,6 +1866,9 @@ where
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
+
+            // Global access to uv data
+            static v2f vertex_output;
 
             v2f vert (appdata v)
             {
@@ -1995,6 +1999,7 @@ where
                 float3 hitPos_w : TEXCOORD2;
             };
 
+            // Built-in properties
             sampler2D _MainTex;   float4 _MainTex_TexelSize;
             sampler2D _SecondTex; float4 _SecondTex_TexelSize;
             sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
@@ -2010,6 +2015,9 @@ where
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
+
+            // Global access to uv data
+            static v2f vertex_output;
 
             v2f vert (appdata v)
             {
