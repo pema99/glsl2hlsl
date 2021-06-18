@@ -1,9 +1,9 @@
 # [Online demo here (pema99.github.io/glsl2hlsl)](https://pema99.github.io/glsl2hlsl)
 
 # glsl2hlsl
-Slightly cursed WIP ShaderToy to Unity (ShaderLab) transpiler
+Slightly cursed WIP ShaderToy to Unity (ShaderLab) transpiler.
 
-Sorry if the code gives you an aneurism
+Sorry if the code gives you an aneurism.
 
 # Features
 - Converts a fairly decent chunk of shadertoy shaders to usable unity shaders
