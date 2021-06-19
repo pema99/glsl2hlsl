@@ -157,7 +157,12 @@ fn extract_prop(id: &str, e: &Expr) -> Option<ShaderProp> {
         Some(Expr::FunCall(FunIdentifier::Identifier(ref fid), ref exps)) => match eval_vector_vals(fid, exps) {
             Some(vals) => {
                 let ctor = if vals.len() < 3 {
-                    vals.iter().chain(std::iter::repeat(&0.0)).map(|x| x.to_string()).take(3).collect::<Vec<_>>().join(",")
+                    vals.iter()
+                        .chain(std::iter::repeat(&0.0))
+                        .map(|x| x.to_string())
+                        .take(3)
+                        .collect::<Vec<_>>()
+                        .join(",")
                 } else {
                     vals.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")
                 };
@@ -293,7 +298,7 @@ pub fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
 // Raymarching handling stuff
 enum PropDeclaration<'a> {
     Single(&'a mut SingleDeclaration),
-    SingleNoType(&'a mut SingleDeclarationNoType)
+    SingleNoType(&'a mut SingleDeclarationNoType),
 }
 
 fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<PropDeclaration<'a>> {
@@ -301,7 +306,11 @@ fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<Pr
         match stmt {
             Statement::Simple(sstmt) => match **sstmt {
                 SimpleStatement::Declaration(Declaration::InitDeclaratorList(ref mut decl)) => {
-                    let rest = decl.tail.iter_mut().find(|x| lut.contains(&x.ident.ident.0.to_lowercase().as_str())).map(|x| PropDeclaration::SingleNoType(x));
+                    let rest = decl
+                        .tail
+                        .iter_mut()
+                        .find(|x| lut.contains(&x.ident.ident.0.to_lowercase().as_str()))
+                        .map(|x| PropDeclaration::SingleNoType(x));
                     if let Some(ref name) = decl.head.name {
                         if lut.contains(&name.0.to_lowercase().as_str()) {
                             Some(PropDeclaration::Single(&mut decl.head))

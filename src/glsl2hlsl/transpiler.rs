@@ -640,7 +640,9 @@ where
 
             // Handle vector equality
             if (*op == BinaryOp::Equal || *op == BinaryOp::NonEqual) && (is_vector(l) || is_vector(r)) {
-                if *op == BinaryOp::NonEqual { let _ = f.write_str("!"); }
+                if *op == BinaryOp::NonEqual {
+                    let _ = f.write_str("!");
+                }
                 let _ = f.write_str("all((");
                 show_expr(f, &l);
                 let _ = f.write_str(") == (");
