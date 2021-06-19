@@ -291,19 +291,25 @@ pub fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
 }
 
 // Raymarching handling stuff
-fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<&'a mut SingleDeclaration> {
-    fn get_statement_decls<'a>(stmt: &'a mut Statement, lut: &Vec<&str>) -> Option<&'a mut SingleDeclaration> {
+enum PropDeclaration<'a> {
+    Single(&'a mut SingleDeclaration),
+    SingleNoType(&'a mut SingleDeclarationNoType)
+}
+
+fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<PropDeclaration<'a>> {
+    fn get_statement_decls<'a>(stmt: &'a mut Statement, lut: &Vec<&str>) -> Option<PropDeclaration<'a>> {
         match stmt {
             Statement::Simple(sstmt) => match **sstmt {
                 SimpleStatement::Declaration(Declaration::InitDeclaratorList(ref mut decl)) => {
+                    let rest = decl.tail.iter_mut().find(|x| lut.contains(&x.ident.ident.0.to_lowercase().as_str())).map(|x| PropDeclaration::SingleNoType(x));
                     if let Some(ref name) = decl.head.name {
                         if lut.contains(&name.0.to_lowercase().as_str()) {
-                            Some(&mut decl.head)
+                            Some(PropDeclaration::Single(&mut decl.head))
                         } else {
-                            None
+                            rest
                         }
                     } else {
-                        None
+                        rest
                     }
                 }
                 SimpleStatement::Selection(ref mut sel) => match sel.rest {
@@ -410,10 +416,14 @@ pub fn handle_raymarch_param(fdef: &mut FunctionDefinition, lut: Vec<&str>, rep:
     let name = {
         let param = find_param(fdef, lut);
 
-        if let Some(p) = param {
+        if let Some(PropDeclaration::Single(p)) = param {
             let was_initalized = p.initializer.is_some();
             p.initializer = Some(Initializer::parse(rep).unwrap());
             p.name.clone().map(|x| x.0.clone()).map(|x| (x, was_initalized))
+        } else if let Some(PropDeclaration::SingleNoType(p)) = param {
+            let was_initalized = p.initializer.is_some();
+            p.initializer = Some(Initializer::parse(rep).unwrap());
+            Some((p.ident.ident.0.clone(), was_initalized))
         } else {
             None
         }
