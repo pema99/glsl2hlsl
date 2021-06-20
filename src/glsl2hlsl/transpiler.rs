@@ -1916,11 +1916,11 @@ where
             #define iChannelTime float4(_Time.y, _Time.y, _Time.y, Time.y)
             #define iDate float4(2020, 6, 18, 30)
             #define iSampleRate (44100)
-            #define iChannelResolution float4x3(                    \\
-                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0,  \\
-                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0,  \\
-                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0,  \\
-                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0)
+            #define iChannelResolution float4x4(                      \\
+                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0, 0, \\
+                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0, 0, \\
+                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0, 0, \\
+                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0, 0)
 
             // Global access to uv data
             static v2f vertex_output;
@@ -2073,11 +2073,11 @@ where
             #define iChannelTime float4(_Time.y, _Time.y, _Time.y, Time.y)
             #define iDate float4(2020, 6, 18, 30)
             #define iSampleRate (44100)
-            #define iChannelResolution float4x3(                    \\
-                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0,  \\
-                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0,  \\
-                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0,  \\
-                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0)
+            #define iChannelResolution float4x4(                      \\
+                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0, 0, \\
+                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0, 0, \\
+                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0, 0, \\
+                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0, 0)
 
             // Global access to uv data
             static v2f vertex_output;
