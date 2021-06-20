@@ -746,6 +746,33 @@ where
                 id = String::from("atan");
             }
 
+            // Handle vector comparisons
+            let vec_comp = match id.as_str() {
+                "lessThanEqual" => Some(("<=", 2)),
+                "lessThan" => Some(("<", 2)),
+                "greaterThanEqual" => Some((">=", 2)),
+                "greaterThan" => Some((">", 2)),
+                "equal" => Some(("==", 2)),
+                "notEqual" => Some(("!=", 2)),
+                "not" => Some(("!", 1)),
+                _ => None
+            };
+            if let Some((op, arity)) = vec_comp {
+                if arity == 2 {
+                    let _ = f.write_str("((");
+                    show_expr(f, &args[0]);
+                    let _ = f.write_fmt(format_args!(") {} (", op));
+                    show_expr(f, &args[1]);
+                    let _ = f.write_str("))");
+                } else {
+                    let _ = f.write_str("(");
+                    let _ = f.write_fmt(format_args!("{}(", op));
+                    show_expr(f, &args[0]);
+                    let _ = f.write_str("))");
+                }
+                return;
+            }
+
             // Deal with single value vector constructors
             let expected_arity = match id.as_str() {
                 "bool2" => 2,

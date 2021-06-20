@@ -151,7 +151,7 @@ fn extract_prop(id: &str, e: &Expr) -> Option<ShaderProp> {
             id.to_owned(),
             "Float".into(),
             "float".into(),
-            v.to_string(),
+            if v { "1".into() } else { "0".into() },
             false,
         )),
         Some(Expr::FunCall(FunIdentifier::Identifier(ref fid), ref exps)) => match eval_vector_vals(fid, exps) {
