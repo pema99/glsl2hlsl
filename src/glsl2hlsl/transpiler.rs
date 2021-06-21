@@ -1953,10 +1953,12 @@ where
                     };
 
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float4 frag (v2f vertex_output) : SV_Target\n");
+                    let _ = f.write_str("float4 frag (v2f __vertex_output) : SV_Target\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("{\n");
                     add_indent();
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_str("vertex_output = __vertex_output;\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
@@ -2167,10 +2169,12 @@ where
                     };
 
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float4 frag (v2f vertex_output, float facing : VFACE) : SV_Target\n");
+                    let _ = f.write_str("float4 frag (v2f __vertex_output, float facing : VFACE) : SV_Target\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("{\n");
                     add_indent();
+                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_str("vertex_output = __vertex_output;\n");
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
