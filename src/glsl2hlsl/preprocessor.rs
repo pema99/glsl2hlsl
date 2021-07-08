@@ -350,11 +350,39 @@ fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<Pr
         .find_map(|stmt| get_statement_decls(stmt, &lut))
 }
 
-fn remove_param(fdef: &mut FunctionDefinition, name: &str) {
-    fn remove_param_stmt(stmt: &mut Statement, name: &str) -> bool {
+type OutFuncs = Vec<(String, Vec<usize>)>;
+#[allow(unused_variables)]
+pub fn find_out_funcs(tu: &TranslationUnit) -> OutFuncs {
+    tu.0.0.iter().filter_map(|x: &ExternalDeclaration| match x {
+        ExternalDeclaration::FunctionDefinition(fdef) => {
+            let v = fdef.prototype.parameters.iter().enumerate().filter_map(|(id, y)| match y {
+                FunctionParameterDeclaration::Named(Some(TypeQualifier { qualifiers }), FunctionParameterDeclarator { ty, ident }) => {
+                    if qualifiers.0.iter().any(|z| match z {
+                        TypeQualifierSpec::Storage(StorageQualifier::Out) => true,
+                        _ => false
+                    }) {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                },
+                _ => None
+            }).collect::<Vec<_>>();
+            if v.is_empty() {
+                None
+            } else {
+                Some((fdef.prototype.name.0.clone(), v))
+            }
+        },
+        _ => None
+    }).collect()
+}
+
+fn remove_param(fdef: &mut FunctionDefinition, outs: &OutFuncs, name: &str) {
+    fn remove_param_stmt(stmt: &mut Statement, outs: &OutFuncs, name: &str) -> bool {
         match stmt {
             Statement::Simple(decl) => match **decl {
-                // Remove
+                // Remove assignments
                 SimpleStatement::Expression(Some(Expr::Assignment(ref l, ref op, ref _r))) => {
                     if *op == AssignmentOp::Equal {
                         match **l {
@@ -369,27 +397,40 @@ fn remove_param(fdef: &mut FunctionDefinition, name: &str) {
                         false
                     }
                 }
+                // Remove overriding func calls
+                SimpleStatement::Expression(Some(Expr::FunCall(FunIdentifier::Identifier(ref fid), ref exprs))) => {
+                    if let Some(out) = outs.iter().find(|x| x.0 == fid.0) {
+                        exprs.iter().enumerate().any(|(i, x)| match x {
+                            Expr::Variable(id) if id.0 == name => {
+                                out.1.contains(&i)
+                            },
+                            _ => false
+                        })
+                    } else {
+                        false
+                    }
+                }
                 SimpleStatement::Switch(ref mut sw) => {
-                    remove_param_stmt_vec(&mut sw.body, name);
+                    remove_param_stmt_vec(&mut sw.body, outs, name);
                     false
                 }
                 SimpleStatement::Selection(ref mut sel) => match sel.rest {
                     SelectionRestStatement::Statement(ref mut stmt) => {
                         if let Statement::Compound(ref mut cstmt) = **stmt {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                            remove_param_stmt_vec(&mut cstmt.statement_list, outs, name);
                         }
-                        remove_param_stmt(stmt, name)
+                        remove_param_stmt(stmt, outs, name)
                     }
                     SelectionRestStatement::Else(ref mut t, ref mut f) => {
                         if let Statement::Compound(ref mut cstmt) = **t {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                            remove_param_stmt_vec(&mut cstmt.statement_list, outs, name);
                         }
                         if let Statement::Compound(ref mut cstmt) = **f {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                            remove_param_stmt_vec(&mut cstmt.statement_list, outs, name);
                         }
-                        if remove_param_stmt(t, name) {
+                        if remove_param_stmt(t, outs, name) {
                             *t = Box::new(Statement::parse("0xDEADBEEF;").unwrap())
-                        } else if remove_param_stmt(f, name) {
+                        } else if remove_param_stmt(f, outs, name) {
                             *f = Box::new(Statement::parse("0xDEADBEEF;").unwrap())
                         }
                         false
@@ -400,28 +441,28 @@ fn remove_param(fdef: &mut FunctionDefinition, name: &str) {
                     | IterationStatement::DoWhile(stmt, _)
                     | IterationStatement::For(_, _, stmt) => {
                         if let Statement::Compound(ref mut cstmt) = **stmt {
-                            remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                            remove_param_stmt_vec(&mut cstmt.statement_list, outs, name);
                         }
-                        remove_param_stmt(stmt, name)
+                        remove_param_stmt(stmt, outs, name)
                     }
                 },
                 _ => false,
             },
             Statement::Compound(cstmt) => {
-                remove_param_stmt_vec(&mut cstmt.statement_list, name);
+                remove_param_stmt_vec(&mut cstmt.statement_list, outs, name);
                 false
             }
         }
     }
 
-    fn remove_param_stmt_vec(stmts: &mut Vec<Statement>, name: &str) {
-        stmts.drain_filter(|x| remove_param_stmt(x, name)).for_each(|_x| ());
+    fn remove_param_stmt_vec(stmts: &mut Vec<Statement>, outs: &OutFuncs, name: &str) {
+        stmts.drain_filter(|x| remove_param_stmt(x, outs, name)).for_each(|_x| ());
     }
 
-    remove_param_stmt_vec(&mut fdef.statement.statement_list, name);
+    remove_param_stmt_vec(&mut fdef.statement.statement_list, outs, name);
 }
 
-pub fn handle_raymarch_param(fdef: &mut FunctionDefinition, lut: Vec<&str>, rep: &str) {
+pub fn handle_raymarch_param(fdef: &mut FunctionDefinition, outs: &OutFuncs, lut: Vec<&str>, rep: &str) {
     let name = {
         let param = find_param(fdef, lut);
 
@@ -439,8 +480,9 @@ pub fn handle_raymarch_param(fdef: &mut FunctionDefinition, lut: Vec<&str>, rep:
     };
 
     if let Some((name, was_initialized)) = name {
-        if was_initialized {
-            remove_param(fdef, name.as_str())
+        // If wasn't initialized, must be defined later, so remove that definition
+        if !was_initialized {
+            remove_param(fdef, outs, name.as_str())
         }
     }
 }

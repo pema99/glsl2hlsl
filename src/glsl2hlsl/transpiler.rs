@@ -2110,6 +2110,8 @@ where
 
 ");
 
+    let outs = find_out_funcs(tu);
+
     for ed in &(tu.0).0 {
         match ed {
             ExternalDeclaration::FunctionDefinition(fdef) => {
@@ -2149,11 +2151,13 @@ where
                     let mut fdef = fdef.clone();
                     handle_raymarch_param(
                         &mut fdef,
+                        &outs,
                         ro_lut,
                         "((facing > 0 ? vertex_output.hitPos_w : vertex_output.ro_w) + _Offset) * _Offset.w",
                     );
                     handle_raymarch_param(
                         &mut fdef,
+                        &outs,
                         rd_lut,
                         "normalize(vertex_output.hitPos_w - vertex_output.ro_w)",
                     );
