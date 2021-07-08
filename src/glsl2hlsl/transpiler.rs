@@ -816,6 +816,11 @@ where
                     }
                 }
 
+                // Transpose matrix constructors
+                if let Some(TypeKind::Matrix(_, _)) = get_function_ret_type(&id, vec![Some(TypeKind::Scalar)]) {
+                    let _ = f.write_str("transpose(");
+                }
+
                 // Normal handling
                 let _ = f.write_str(id.as_str());
                 let _ = f.write_str("(");
@@ -832,6 +837,11 @@ where
                 }
 
                 let _ = f.write_str(")");
+
+                // Tranpose matrix constructors
+                if let Some(TypeKind::Matrix(_, _)) = get_function_ret_type(&id, vec![Some(TypeKind::Scalar)]) {
+                    let _ = f.write_str(")");
+                }
             }
         }
         Expr::Dot(ref e, ref i) => {

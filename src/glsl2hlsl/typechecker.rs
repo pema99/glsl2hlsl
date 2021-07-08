@@ -243,6 +243,10 @@ pub fn get_function_ret_type<'a>(s: &str, args: Vec<Option<TypeKind>>) -> Option
         "ddx_fine" => args[0].clone(),
         "ddy_fine" => args[0].clone(),
         "rsqrt" => args[0].clone(),
+        "transpose" => match args[0] {
+            Some(TypeKind::Matrix(m, n)) => Some(TypeKind::Matrix(n, m)),
+            _ => lookup_sym(s)
+        }
 
         _ => lookup_sym(s),
     }
