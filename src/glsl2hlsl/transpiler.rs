@@ -1925,7 +1925,7 @@ where
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
             #define iResolution float3(_Resolution, _Resolution, _Resolution)
             #define iFrame (floor(_Time.y / 60))
-            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, Time.y)
+            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, _Time.y)
             #define iDate float4(2020, 6, 18, 30)
             #define iSampleRate (44100)
             #define iChannelResolution float4x4(                      \\
@@ -2086,7 +2086,7 @@ where
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
             #define iResolution float3(_Resolution, _Resolution, _Resolution)
             #define iFrame (floor(_Time.y / 60))
-            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, Time.y)
+            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, _Time.y)
             #define iDate float4(2020, 6, 18, 30)
             #define iSampleRate (44100)
             #define iChannelResolution float4x4(                      \\
