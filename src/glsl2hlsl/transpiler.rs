@@ -696,9 +696,9 @@ where
             if *op == AssignmentOp::Mult && is_matrix(e) {
                 show_expr(f, &v);
                 let _ = f.write_str(" = mul(");
-                show_expr(f, &e);
-                let _ = f.write_str(",");
                 show_expr(f, &v);
+                let _ = f.write_str(",");
+                show_expr(f, &e);
                 let _ = f.write_str(")");
                 return;
             }
