@@ -818,7 +818,9 @@ where
 
                 // Transpose matrix constructors
                 if let Some(TypeKind::Matrix(_, _)) = get_function_ret_type(&id, vec![Some(TypeKind::Scalar)]) {
-                    let _ = f.write_str("transpose(");
+                    if is_constructor(&id) {
+                        let _ = f.write_str("transpose(");
+                    }
                 }
 
                 // Normal handling
@@ -840,7 +842,9 @@ where
 
                 // Tranpose matrix constructors
                 if let Some(TypeKind::Matrix(_, _)) = get_function_ret_type(&id, vec![Some(TypeKind::Scalar)]) {
-                    let _ = f.write_str(")");
+                    if is_constructor(&id) {
+                        let _ = f.write_str(")");
+                    }
                 }
             }
         }

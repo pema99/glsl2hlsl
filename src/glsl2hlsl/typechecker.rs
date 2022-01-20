@@ -338,6 +338,40 @@ pub fn is_vector(e: &Expr) -> bool {
     }
 }
 
+pub fn is_constructor<'a>(s: &str) -> bool {
+    match translate_glsl_id(s) {
+        // Vector types
+        "bool2" => true,
+        "bool3" => true,
+        "bool4" => true,
+        "int2" => true,
+        "int3" => true,
+        "int4" => true,
+        "uint2" => true,
+        "uint3" => true,
+        "uint4" => true,
+        "double2" => true,
+        "double3" => true,
+        "double4" => true,
+        "float2" => true,
+        "float3" => true,
+        "float4" => true,
+
+        //Matrix types
+        "float2x2" => true,
+        "float3x3" => true,
+        "float4x4" => true,
+        "float2x3" => true,
+        "float2x4" => true,
+        "float3x2" => true,
+        "float3x4" => true,
+        "float4x2" => true,
+        "float4x3" => true,
+
+        _ => false
+    }
+}
+
 pub fn typespec_to_typekind(ty: &TypeSpecifierNonArray) -> Option<TypeKind> {
     match ty {
         TypeSpecifierNonArray::Bool
