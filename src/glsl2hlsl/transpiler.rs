@@ -1544,9 +1544,8 @@ where
         ForInitStatement::Expression(ref expr) => {
             if let Some(ref e) = *expr {
                 show_expr(f, e);
-            } else {
-                let _ = f.write_str(";");
             }
+            let _ = f.write_str(";");
         }
         ForInitStatement::Declaration(ref d) => show_declaration(f, d, false, false),
     }
