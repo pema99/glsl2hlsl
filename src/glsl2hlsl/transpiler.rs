@@ -113,7 +113,7 @@ where
         "iChannel1" => "_SecondTex",
         "iChannel2" => "_ThirdTex",
         "iChannel3" => "_FourthTex",
-        "gl_FragCoord" => "(vertex_output.uv * _Resolution)",
+        "gl_FragCoord" => "(vertex_output.uv * iResolution)",
         "iMouse" => "_Mouse",
 
         //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
@@ -1864,7 +1864,9 @@ where
         _FourthTex (\"iChannel3\", 2D) = \"white\" {}
         _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
         [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1
-        _Resolution (\"Resolution (Change if AA is bad)\", Range(1, 1024)) = 1",
+        _Resolution (\"Resolution (Change if AA is bad)\", Range(1, 1024)) = 1
+        _ResolutionX (\"ResolutionX\", Range(1, 10)) = 1
+        _ResolutionY (\"ResolutionY\", Range(1, 10)) = 1",        
     );
 
     // Add props
@@ -1913,12 +1915,14 @@ where
             float4 _Mouse;
             float _GammaCorrect;
             float _Resolution;
+            float _ResolutionX;
+            float _ResolutionY;            
 
             // GLSL Compatability macros
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
-            #define iResolution float3(_Resolution, _Resolution, _Resolution)
+            #define iResolution float3(_ResolutionX, _ResolutionY, _Resolution)
             #define iFrame (floor(_Time.y / 60))
             #define iChannelTime float4(_Time.y, _Time.y, _Time.y, _Time.y)
             #define iDate float4(2020, 6, 18, 30)
@@ -1967,7 +1971,7 @@ where
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv * _Resolution;\n", uv));
+                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv * iResolution;\n", uv));
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
@@ -2016,7 +2020,8 @@ where
         _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
         [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1
         _Resolution (\"Resolution (Change if AA is bad)\", Range(1, 1024)) = 1
-
+        _ResolutionX (\"ResolutionX\", Range(1, 10)) = 1
+        _ResolutionY (\"ResolutionY\", Range(1, 10)) = 1
         [Header(Raymarching)]
         [ToggleUI] _WorldSpace (\"World Space Marching\", Float) = 0
         _Offset (\"Offset (W=Scale)\", Vector) = (0, 0, 0, 1)",
@@ -2072,6 +2077,8 @@ where
             float4 _Mouse;
             float _GammaCorrect;
             float _Resolution;
+            float _ResolutionX;
+            float _ResolutionY;                        
             float _WorldSpace;
             float4 _Offset;
 
@@ -2079,7 +2086,7 @@ where
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
-            #define iResolution float3(_Resolution, _Resolution, _Resolution)
+            #define iResolution float3(_ResolutionX, _ResolutionY, _Resolution)
             #define iFrame (floor(_Time.y / 60))
             #define iChannelTime float4(_Time.y, _Time.y, _Time.y, _Time.y)
             #define iDate float4(2020, 6, 18, 30)
@@ -2183,7 +2190,7 @@ where
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv * _Resolution;\n", uv));
+                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv * iResolution;\n", uv));
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
