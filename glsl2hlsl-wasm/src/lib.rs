@@ -30,8 +30,6 @@ pub fn download(json: String, extract_props: bool, raymarch: bool) {
     let shader = make_shader(&json).unwrap();
     let files = get_files(&shader, extract_props, raymarch);
     for f in files.iter() {
-        unsafe {
-            download_file(&f.name, &f.contents);
-        }
+        download_file(&f.name, &f.contents);
     }
 }

@@ -9,6 +9,7 @@ Shader "Converted/Template"
         _FourthTex ("iChannel3", 2D) = "white" {}
         _Mouse ("Mouse", Vector) = (0.5, 0.5, 0.5, 0.5)
         [ToggleUI] _GammaCorrect ("Gamma Correction", Float) = 1
+        _Resolution ("Resolution (Change if AA is bad)", Range(1, 1024)) = 1
 
         [Header(Raymarching)]
         [ToggleUI] _WorldSpace ("World Space Marching", Float) = 0
@@ -49,21 +50,34 @@ Shader "Converted/Template"
                 float3 hitPos_w : TEXCOORD2;
             };
 
+            // Built-in properties
             sampler2D _MainTex;   float4 _MainTex_TexelSize;
             sampler2D _SecondTex; float4 _SecondTex_TexelSize;
             sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
             sampler2D _FourthTex; float4 _FourthTex_TexelSize;
             float4 _Mouse;
             float _GammaCorrect;
+            float _Resolution;
             float _WorldSpace;
             float4 _Offset;
 
             // GLSL Compatability macros
-            #define iFrame (floor(_Time.y / 60))
-            #define iResolution float3(1, 1, 1)
             #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
             #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
             #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
+            #define iResolution float3(_Resolution, _Resolution, _Resolution)
+            #define iFrame (floor(_Time.y / 60))
+            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, _Time.y)
+            #define iDate float4(2020, 6, 18, 30)
+            #define iSampleRate (44100)
+            #define iChannelResolution float4x4(                      \
+                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0, 0, \
+                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0, 0, \
+                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0, 0, \
+                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0, 0)
+
+            // Global access to uv data
+            static v2f vertex_output;
 
             v2f vert (appdata v)
             {
@@ -98,14 +112,14 @@ float detail;
             static float det = 0.;
             float2x2 rot(float a)
             {
-                return float2x2(cos(a), sin(a), -sin(a), cos(a));
+                return transpose(float2x2(cos(a), sin(a), -sin(a), cos(a)));
             }
 
             float4 formula(float4 p)
             {
                 p.xz = abs(p.xz+1.)-abs(p.xz-1.)-p.xz;
                 p.y -= 0.25;
-                p.xy = mul(rot(radians(35.)),p.xy);
+                p.xy = mul(p.xy,rot(radians(35.)));
                 p = p*2./clamp(dot(p.xyz, p.xyz), 0.2, 1.);
                 return p;
             }
@@ -251,7 +265,7 @@ float detail;
 #else
                 col *= float3(1., 0.9, 0.85);
 #ifdef NYAN
-                dir.yx = mul(rot(dir.x),dir.yx);
+                dir.yx = mul(dir.yx,rot(dir.x));
                 float2 ncatpos = dir.xy+float2(-3.+glsl_mod(-t, 6.), -0.27);
                 float4 ncat = nyan(ncatpos*5.);
                 float4 rain = rainbow(ncatpos*10.+float2(0.8, 0.5));
@@ -274,18 +288,19 @@ float detail;
                 float3 advec = normalize(adv-go);
                 float an = adv.x-go.x;
                 an *= min(1., abs(adv.z-go.z))*sign(adv.z-go.z)*0.7;
-                dir.xy = mul(float2x2(cos(an), sin(an), -sin(an), cos(an)),dir.xy);
+                dir.xy = mul(dir.xy,transpose(float2x2(cos(an), sin(an), -sin(an), cos(an))));
                 an = advec.y*1.7;
-                dir.yz = mul(float2x2(cos(an), sin(an), -sin(an), cos(an)),dir.yz);
+                dir.yz = mul(dir.yz,transpose(float2x2(cos(an), sin(an), -sin(an), cos(an))));
                 an = atan2(advec.x, advec.z);
-                dir.xz = mul(float2x2(cos(an), sin(an), -sin(an), cos(an)),dir.xz);
+                dir.xz = mul(dir.xz,transpose(float2x2(cos(an), sin(an), -sin(an), cos(an))));
                 return go;
             }
 
-            float4 frag (v2f vertex_output, float facing : VFACE) : SV_Target
+            float4 frag (v2f __vertex_output, float facing : VFACE) : SV_Target
             {
+                vertex_output = __vertex_output;
                 float4 fragColor = 0;
-                float2 fragCoord = vertex_output.uv;
+                float2 fragCoord = vertex_output.uv * _Resolution;
                 float2 uv = fragCoord.xy/iResolution.xy*2.-1.;
                 float2 oriuv = uv;
                 uv.y *= iResolution.y/iResolution.x;
@@ -295,8 +310,8 @@ float detail;
                     
                 float fov = 0.9-max(0., 0.7-_Time.y*0.3);
                 float3 dir = normalize(vertex_output.hitPos_w-vertex_output.ro_w);
-                dir.yz = mul(rot(mouse.y),dir.yz);
-                dir.xz = mul(rot(mouse.x),dir.xz);
+                dir.yz = mul(dir.yz,rot(mouse.y));
+                dir.xz = mul(dir.xz,rot(mouse.x));
                 float3 from = ((facing>0 ? vertex_output.hitPos_w : vertex_output.ro_w)+_Offset)*_Offset.w;
                 float3 color = raymarch(from, dir);
 #ifdef BORDER

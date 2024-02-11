@@ -2,7 +2,7 @@
 name = "glsl2hlsl-wasm"
 version = "0.1.0"
 authors = ["Pema Malling <pemamalling@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -29,7 +29,3 @@ wee_alloc = { version = "0.4.5", optional = true }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
-
-[profile.release]
-# Tell `rustc` to optimize for small code size.
-opt-level = "s"
