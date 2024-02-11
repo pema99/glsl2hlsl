@@ -37,7 +37,7 @@ pub fn lookup_sym(name: &str) -> Option<TypeKind> {
             .last()
             .and_then(|x| x.get(name))
             .or(SYM_TABLE.first().and_then(|x| x.get(name)))
-            .map(|x| x.clone())
+            .cloned()
     }
 }
 
@@ -198,7 +198,7 @@ pub fn translate_glsl_id(s: &str) -> &str {
     }
 }
 
-pub fn get_function_ret_type<'a>(s: &str, args: Vec<Option<TypeKind>>) -> Option<TypeKind> {
+pub fn get_function_ret_type(s: &str, args: Vec<Option<TypeKind>>) -> Option<TypeKind> {
     match translate_glsl_id(s) {
         // Vector types
         "bool2" => Some(TypeKind::Vector(2)),
@@ -245,8 +245,8 @@ pub fn get_function_ret_type<'a>(s: &str, args: Vec<Option<TypeKind>>) -> Option
         "rsqrt" => args[0].clone(),
         "transpose" => match args[0] {
             Some(TypeKind::Matrix(m, n)) => Some(TypeKind::Matrix(n, m)),
-            _ => lookup_sym(s)
-        }
+            _ => lookup_sym(s),
+        },
 
         _ => lookup_sym(s),
     }
@@ -292,9 +292,9 @@ pub fn get_expr_type(e: &Expr) -> Option<TypeKind> {
                 Some(TypeKind::Scalar) | Some(TypeKind::Vector(_)) => {
                     // swizzling
                     if i.0.len() == 1 {
-                        return Some(TypeKind::Scalar);
+                        Some(TypeKind::Scalar)
                     } else {
-                        return Some(TypeKind::Vector(i.0.len()));
+                        Some(TypeKind::Vector(i.0.len()))
                     }
                 }
                 Some(TypeKind::Matrix(_, _)) => Some(TypeKind::Scalar), // matrix access
@@ -311,34 +311,22 @@ pub fn get_expr_type(e: &Expr) -> Option<TypeKind> {
 
 // Utility
 pub fn is_matrix(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Matrix(_, _)) => true,
-        _ => false,
-    }
+    matches!(get_expr_type(e), Some(TypeKind::Matrix(_, _)))
 }
 
 pub fn is_scalar(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Scalar) => true,
-        _ => false,
-    }
+    matches!(get_expr_type(e), Some(TypeKind::Scalar))
 }
 
 fn is_struct(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Struct(_)) => true,
-        _ => false,
-    }
+    matches!(get_expr_type(e), Some(TypeKind::Struct(_)))
 }
 
 pub fn is_vector(e: &Expr) -> bool {
-    match get_expr_type(e) {
-        Some(TypeKind::Vector(_)) => true,
-        _ => false,
-    }
+    matches!(get_expr_type(e), Some(TypeKind::Vector(_)))
 }
 
-pub fn is_constructor<'a>(s: &str) -> bool {
+pub fn is_constructor(s: &str) -> bool {
     match translate_glsl_id(s) {
         // Vector types
         "bool2" => true,
@@ -368,7 +356,7 @@ pub fn is_constructor<'a>(s: &str) -> bool {
         "float4x2" => true,
         "float4x3" => true,
 
-        _ => false
+        _ => false,
     }
 }
 
@@ -403,13 +391,7 @@ pub fn typespec_to_typekind(ty: &TypeSpecifierNonArray) -> Option<TypeKind> {
         TypeSpecifierNonArray::Mat34 | TypeSpecifierNonArray::DMat34 => Some(TypeKind::Matrix(3, 4)),
         TypeSpecifierNonArray::Mat42 | TypeSpecifierNonArray::DMat42 => Some(TypeKind::Matrix(4, 2)),
         TypeSpecifierNonArray::Mat43 | TypeSpecifierNonArray::DMat43 => Some(TypeKind::Matrix(4, 3)),
-        TypeSpecifierNonArray::Struct(ref s) => {
-            if let Some(id) = &s.name {
-                Some(TypeKind::Struct(id.0.clone()))
-            } else {
-                None
-            }
-        }
+        TypeSpecifierNonArray::Struct(ref s) => s.name.as_ref().map(|id| TypeKind::Struct(id.0.clone())),
         TypeSpecifierNonArray::TypeName(ref tn) => Some(TypeKind::Struct(tn.0.clone())),
         _ => None,
     }

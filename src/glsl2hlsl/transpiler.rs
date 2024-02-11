@@ -1,5 +1,4 @@
 use std::fmt::Write;
-use std::iter;
 
 use glsl::parser::Parse as _;
 use glsl::syntax::*;
@@ -22,9 +21,9 @@ pub fn transpile(input: String, extract_props: bool, raymarch: bool) -> String {
 
             let mut s = String::new();
             if raymarch {
-                show_translation_unit_raymarch(&mut s, &stage, props);
+                show_translation_unit_raymarch(&mut s, stage, props);
             } else {
-                show_translation_unit(&mut s, &stage, props);
+                show_translation_unit(&mut s, stage, props);
             }
             replace_macros(s, defs)
         }
@@ -44,7 +43,7 @@ fn sub_indent() {
     }
 }
 fn get_indent() -> String {
-    unsafe { iter::repeat("    ").take(INDENT_LEVEL).collect::<String>() }
+    unsafe { "    ".repeat(INDENT_LEVEL) }
 }
 
 // Precedence information for transpiling parentheses properly
@@ -277,7 +276,7 @@ where
     F: Write,
 {
     if let Some(ref qual) = t.qualifier {
-        show_type_qualifier(f, &qual);
+        show_type_qualifier(f, qual);
         let _ = f.write_str(" ");
     }
 
@@ -332,7 +331,7 @@ where
     let _ = f.write_str(get_indent().as_str());
 
     if let Some(ref qual) = field.qualifier {
-        show_type_qualifier(f, &qual);
+        show_type_qualifier(f, qual);
         let _ = f.write_str(" ");
     }
 
@@ -365,7 +364,7 @@ where
             }
             ArraySpecifierDimension::ExplicitlySized(ref e) => {
                 let _ = f.write_str("[");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str("]");
             }
         }
@@ -403,10 +402,10 @@ where
     F: Write,
 {
     match *q {
-        TypeQualifierSpec::Storage(ref s) => show_storage_qualifier(f, &s),
-        TypeQualifierSpec::Layout(ref l) => show_layout_qualifier(f, &l),
-        TypeQualifierSpec::Precision(ref p) => show_precision_qualifier(f, &p),
-        TypeQualifierSpec::Interpolation(ref i) => show_interpolation_qualifier(f, &i),
+        TypeQualifierSpec::Storage(ref s) => show_storage_qualifier(f, s),
+        TypeQualifierSpec::Layout(ref l) => show_layout_qualifier(f, l),
+        TypeQualifierSpec::Precision(ref p) => show_precision_qualifier(f, p),
+        TypeQualifierSpec::Interpolation(ref i) => show_interpolation_qualifier(f, i),
         TypeQualifierSpec::Invariant => {
             let _ = f.write_str("invariant");
         }
@@ -472,11 +471,11 @@ where
         StorageQualifier::WriteOnly => {
             let _ = f.write_str("writeonly");
         }
-        StorageQualifier::Subroutine(ref n) => show_subroutine(f, &n),
+        StorageQualifier::Subroutine(ref n) => show_subroutine(f, n),
     }
 }
 
-fn show_subroutine<F>(f: &mut F, types: &Vec<TypeName>)
+fn show_subroutine<F>(f: &mut F, types: &[TypeName])
 where
     F: Write,
 {
@@ -524,9 +523,9 @@ where
     match *l {
         LayoutQualifierSpec::Identifier(ref i, Some(ref e)) => {
             let _ = write!(f, "{} = ", i);
-            show_expr(f, &e);
+            show_expr(f, e);
         }
-        LayoutQualifierSpec::Identifier(ref i, None) => show_identifier(f, &i),
+        LayoutQualifierSpec::Identifier(ref i, None) => show_identifier(f, i),
         LayoutQualifierSpec::Shared => {
             let _ = f.write_str("shared");
         }
@@ -594,7 +593,7 @@ where
     F: Write,
 {
     match *expr {
-        Expr::Variable(ref i) => show_identifier(f, &i),
+        Expr::Variable(ref i) => show_identifier(f, i),
         Expr::IntConst(ref x) => {
             let _ = write!(f, "{}", x);
         }
@@ -608,32 +607,32 @@ where
         Expr::DoubleConst(ref x) => show_double(f, *x),
         Expr::Unary(ref op, ref e) => {
             // Note: all unary ops are right-to-left associative
-            show_unary_op(f, &op);
+            show_unary_op(f, op);
 
             if e.precedence() > op.precedence() {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             } else if let Expr::Unary(eop, _) = &**e {
                 // Prevent double-unary plus/minus turning into inc/dec
                 if eop == op && (*eop == UnaryOp::Add || *eop == UnaryOp::Minus) {
                     let _ = f.write_str("(");
-                    show_expr(f, &e);
+                    show_expr(f, e);
                     let _ = f.write_str(")");
                 } else {
-                    show_expr(f, &e);
+                    show_expr(f, e);
                 }
             } else {
-                show_expr(f, &e);
+                show_expr(f, e);
             }
         }
         Expr::Binary(ref op, ref l, ref r) => {
             // Handle mat mult
             if *op == BinaryOp::Mult && (is_matrix(l) || is_matrix(r)) {
                 let _ = f.write_str("mul(");
-                show_expr(f, &l);
+                show_expr(f, l);
                 let _ = f.write_str(",");
-                show_expr(f, &r);
+                show_expr(f, r);
                 let _ = f.write_str(")");
                 return;
             }
@@ -644,29 +643,29 @@ where
                     let _ = f.write_str("!");
                 }
                 let _ = f.write_str("all((");
-                show_expr(f, &l);
+                show_expr(f, l);
                 let _ = f.write_str(") == (");
-                show_expr(f, &r);
+                show_expr(f, r);
                 let _ = f.write_str("))");
                 return;
             }
 
             // Note: all binary ops are left-to-right associative (<= for left part)
             if l.precedence() <= op.precedence() {
-                show_expr(f, &l);
+                show_expr(f, l);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &l);
+                show_expr(f, l);
                 let _ = f.write_str(")");
             }
 
-            show_binary_op(f, &op);
+            show_binary_op(f, op);
 
             if r.precedence() < op.precedence() {
-                show_expr(f, &r);
+                show_expr(f, r);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &r);
+                show_expr(f, r);
                 let _ = f.write_str(")");
             }
         }
@@ -674,53 +673,53 @@ where
             // Note: ternary is right-to-left associative (<= for right part)
 
             if c.precedence() < expr.precedence() {
-                show_expr(f, &c);
+                show_expr(f, c);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &c);
+                show_expr(f, c);
                 let _ = f.write_str(")");
             }
             let _ = f.write_str(" ? ");
-            show_expr(f, &s);
+            show_expr(f, s);
             let _ = f.write_str(" : ");
             if e.precedence() <= expr.precedence() {
-                show_expr(f, &e);
+                show_expr(f, e);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             }
         }
         Expr::Assignment(ref v, ref op, ref e) => {
             // Handle mat mult
             if *op == AssignmentOp::Mult && is_matrix(e) {
-                show_expr(f, &v);
+                show_expr(f, v);
                 let _ = f.write_str(" = mul(");
-                show_expr(f, &v);
+                show_expr(f, v);
                 let _ = f.write_str(",");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
                 return;
             }
 
             // Note: all assignment ops are right-to-left associative
             if v.precedence() < op.precedence() {
-                show_expr(f, &v);
+                show_expr(f, v);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &v);
+                show_expr(f, v);
                 let _ = f.write_str(")");
             }
 
             let _ = f.write_str(" ");
-            show_assignment_op(f, &op);
+            show_assignment_op(f, op);
             let _ = f.write_str(" ");
 
             if e.precedence() <= op.precedence() {
-                show_expr(f, &e);
+                show_expr(f, e);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             }
         }
@@ -728,18 +727,18 @@ where
             // Note: bracket is left-to-right associative
 
             if e.precedence() <= expr.precedence() {
-                show_expr(f, &e);
+                show_expr(f, e);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             }
 
-            show_array_spec(f, &a);
+            show_array_spec(f, a);
         }
         Expr::FunCall(ref fun, ref args) => {
             let mut id = String::new();
-            show_function_identifier(&mut id, &fun);
+            show_function_identifier(&mut id, fun);
 
             // Handle atan2 overload
             if id == "atan2" && args.len() == 1 {
@@ -755,7 +754,7 @@ where
                 "equal" => Some(("==", 2)),
                 "notEqual" => Some(("!=", 2)),
                 "not" => Some(("!", 1)),
-                _ => None
+                _ => None,
             };
             if let Some((op, arity)) = vec_comp {
                 if arity == 2 {
@@ -853,18 +852,18 @@ where
             let mut i = i.clone();
             if is_vector(e) {
                 i.0 =
-                    i.0.replace("s", "x")
-                        .replace("t", "y")
-                        .replace("p", "z")
-                        .replace("q", "w");
+                    i.0.replace('s', "x")
+                        .replace('t', "y")
+                        .replace('p', "z")
+                        .replace('q', "w");
             }
 
             // Note: dot is left-to-right associative
             if e.precedence() <= expr.precedence() {
-                show_expr(f, &e);
+                show_expr(f, e);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             }
             let _ = f.write_str(".");
@@ -873,10 +872,10 @@ where
         Expr::PostInc(ref e) => {
             // Note: post-increment is right-to-left associative
             if e.precedence() < expr.precedence() {
-                show_expr(f, &e);
+                show_expr(f, e);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             }
 
@@ -886,10 +885,10 @@ where
             // Note: post-decrement is right-to-left associative
 
             if e.precedence() < expr.precedence() {
-                show_expr(f, &e);
+                show_expr(f, e);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &e);
+                show_expr(f, e);
                 let _ = f.write_str(")");
             }
 
@@ -899,20 +898,20 @@ where
             // Note: comma is left-to-right associative
 
             if a.precedence() <= expr.precedence() {
-                show_expr(f, &a);
+                show_expr(f, a);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &a);
+                show_expr(f, a);
                 let _ = f.write_str(")");
             }
 
             let _ = f.write_str(", ");
 
             if b.precedence() < expr.precedence() {
-                show_expr(f, &b);
+                show_expr(f, b);
             } else {
                 let _ = f.write_str("(");
-                show_expr(f, &b);
+                show_expr(f, b);
                 let _ = f.write_str(")");
             }
         }
@@ -1070,7 +1069,7 @@ where
     F: Write,
 {
     match *i {
-        FunIdentifier::Expr(ref e) => show_expr(f, &*e),
+        FunIdentifier::Expr(ref e) => show_expr(f, e),
         FunIdentifier::Identifier(ref n) => {
             let id = n.0.as_str();
             let _ = f.write_str(translate_glsl_id(id));
@@ -1084,19 +1083,18 @@ where
 {
     match *d {
         Declaration::FunctionPrototype(ref proto) => {
-            show_function_prototype(f, &proto);
+            show_function_prototype(f, proto);
             let _ = f.write_str(";");
         }
         Declaration::InitDeclaratorList(ref list) => {
-            let invalid_static = match list.head.ty.ty.ty {
-                TypeSpecifierNonArray::Struct(_) => true,
-                TypeSpecifierNonArray::Void => true,
-                _ => false,
-            };
+            let invalid_static = matches!(
+                list.head.ty.ty.ty,
+                TypeSpecifierNonArray::Struct(_) | TypeSpecifierNonArray::Void
+            );
             if global && !invalid_static {
                 let _ = f.write_str("static ");
             }
-            show_init_declarator_list(f, &list);
+            show_init_declarator_list(f, list);
             let _ = f.write_str(";");
         }
         Declaration::Precision(ref _qual, ref _ty) => {
@@ -1105,11 +1103,11 @@ where
             let _ = f.write_str(";");*/
         }
         Declaration::Block(ref block) => {
-            show_block(f, &block);
+            show_block(f, block);
             let _ = f.write_str(";");
         }
         Declaration::Global(ref qual, ref identifiers) => {
-            show_type_qualifier(f, &qual);
+            show_type_qualifier(f, qual);
 
             if !identifiers.is_empty() {
                 let mut iter = identifiers.iter();
@@ -1310,10 +1308,7 @@ where
                 ty.qualifiers
                     .0
                     .iter()
-                    .filter(|y| match y {
-                        TypeQualifierSpec::Storage(StorageQualifier::Out) => true,
-                        _ => false,
-                    })
+                    .filter(|y| matches!(y, TypeQualifierSpec::Storage(StorageQualifier::Out)))
                     .count()
                     > 0
             }
@@ -1436,10 +1431,7 @@ where
 {
     match *sst {
         SelectionRestStatement::Statement(ref if_st) => {
-            let simple = match **if_st {
-                Statement::Simple(_) => true,
-                _ => false,
-            };
+            let simple = matches!(**if_st, Statement::Simple(_));
             if simple {
                 add_indent();
             }
@@ -1601,7 +1593,7 @@ where
     match *pp {
         Preprocessor::Define(ref pd) => show_preprocessor_define(f, pd),
         Preprocessor::Else => show_preprocessor_else(f),
-        Preprocessor::ElseIf(ref pei) => show_preprocessor_elseif(f, pei),
+        Preprocessor::ElIf(ref pei) => show_preprocessor_elseif(f, pei),
         Preprocessor::EndIf => show_preprocessor_endif(f),
         Preprocessor::Error(ref pe) => show_preprocessor_error(f, pe),
         Preprocessor::If(ref pi) => show_preprocessor_if(f, pi),
@@ -1621,7 +1613,7 @@ where
     F: Write,
 {
     let handle_define = |ident: &Identifier, value: &String| {
-        let paren = value.trim().starts_with("(") && value.trim().ends_with(")");
+        let paren = value.trim().starts_with('(') && value.trim().ends_with(')');
         let mut res = String::from(value);
         if let Ok(stmt) = Statement::parse(value) {
             res.clear();
@@ -1658,7 +1650,7 @@ where
         PreprocessorDefine::ObjectLike { ref ident, ref value } => {
             let res = handle_define(ident, value);
 
-            let _ = write!(f, "#define {} {}\n", ident, res);
+            let _ = writeln!(f, "#define {} {}", ident, res);
         }
 
         PreprocessorDefine::FunctionLike {
@@ -1678,7 +1670,7 @@ where
 
             let res = handle_define(ident, value);
 
-            let _ = write!(f, ") {}\n", res);
+            let _ = writeln!(f, ") {}", res);
         }
     }
 }
@@ -1690,11 +1682,11 @@ where
     let _ = f.write_str("#else\n");
 }
 
-fn show_preprocessor_elseif<F>(f: &mut F, pei: &PreprocessorElseIf)
+fn show_preprocessor_elseif<F>(f: &mut F, pei: &PreprocessorElIf)
 where
     F: Write,
 {
-    let _ = write!(f, "#elseif {}\n", pei.condition);
+    let _ = writeln!(f, "#elseif {}", pei.condition);
 }
 
 fn show_preprocessor_error<F>(f: &mut F, pe: &PreprocessorError)
@@ -1715,7 +1707,7 @@ fn show_preprocessor_if<F>(f: &mut F, pi: &PreprocessorIf)
 where
     F: Write,
 {
-    let _ = write!(f, "#if {}\n", pi.condition);
+    let _ = writeln!(f, "#if {}", pi.condition);
 }
 
 fn show_preprocessor_ifdef<F>(f: &mut F, pid: &PreprocessorIfDef)
@@ -1830,7 +1822,7 @@ where
     let _ = f.write_str("\n");
 }
 
-fn show_external_declaration<F>(f: &mut F, ed: &ExternalDeclaration, props: &Vec<ShaderProp>)
+fn show_external_declaration<F>(f: &mut F, ed: &ExternalDeclaration, props: &[ShaderProp])
 where
     F: Write,
 {
@@ -1876,7 +1868,7 @@ where
     );
 
     // Add props
-    if props.len() > 0 {
+    if !props.is_empty() {
         let _ = f.write_str("\n\n        [Header(Extracted)]\n");
         for prop in props.iter() {
             let _ = f.write_str("        ");
@@ -2031,7 +2023,7 @@ where
     );
 
     // Add props
-    if props.len() > 0 {
+    if !props.is_empty() {
         let _ = f.write_str("\n\n        [Header(Extracted)]\n");
         for prop in props.iter() {
             let _ = f.write_str("        ");

@@ -27,7 +27,7 @@ impl ShaderProp {
     }
 }
 
-fn eval_vector_vals(fid: &Identifier, exps: &Vec<Expr>) -> Option<Vec<f32>> {
+fn eval_vector_vals(fid: &Identifier, exps: &[Expr]) -> Option<Vec<f32>> {
     let vals = exps
         .iter()
         .flat_map(eval_shallow_const_expr)
@@ -58,7 +58,7 @@ fn eval_shallow_const_expr(e: &Expr) -> Option<Expr> {
                 match eval_vector_vals(&fid, &exps) {
                     Some(vals) => Some(Expr::FunCall(
                         FunIdentifier::Identifier(fid),
-                        vals.iter().map(|x| Expr::FloatConst(-*x as f32)).collect(),
+                        vals.iter().map(|x| Expr::FloatConst(-*x)).collect(),
                     )),
                     _ => Some(e.clone()),
                 }
@@ -99,14 +99,12 @@ fn eval_shallow_const_expr(e: &Expr) -> Option<Expr> {
                         BinaryOp::Div => Some(valsl.iter().zip(valsr.iter()).map(|(l, r)| l / r).collect()),
                         _ => None,
                     };
-                    if let Some(vals) = vals {
-                        Some(Expr::FunCall(
+                    vals.map(|vals| {
+                        Expr::FunCall(
                             FunIdentifier::Identifier(fidl),
                             vals.iter().map(|x| Expr::FloatConst(*x)).collect(),
-                        ))
-                    } else {
-                        None
-                    }
+                        )
+                    })
                 }
                 _ => Some(e.clone()),
             },
@@ -184,29 +182,22 @@ pub fn process_globals(tu: &mut TranslationUnit, extract_props: bool) -> Vec<Sha
     let mut res = Vec::new();
 
     fn is_const(ty: &TypeQualifierSpec) -> bool {
-        match ty {
-            TypeQualifierSpec::Storage(StorageQualifier::Const) => true,
-            _ => false,
-        }
+        matches!(ty, TypeQualifierSpec::Storage(StorageQualifier::Const))
     }
 
     if extract_props {
         for decl in tu.0 .0.iter_mut() {
-            match decl {
-                ExternalDeclaration::Declaration(Declaration::InitDeclaratorList(ref mut idl)) => {
-                    match (&idl.head.name, &idl.head.initializer, &mut idl.head.ty.qualifier) {
-                        (Some(name), Some(Initializer::Simple(init)), Some(qual)) => {
-                            if qual.qualifiers.0.iter().any(is_const) {
-                                if let Some(prop) = extract_prop(name.as_str(), init.as_ref()) {
-                                    res.push(prop);
-                                    idl.head.initializer = None;
-                                }
-                            }
+            if let ExternalDeclaration::Declaration(Declaration::InitDeclaratorList(ref mut idl)) = decl {
+                if let (Some(name), Some(Initializer::Simple(init)), Some(qual)) =
+                    (&idl.head.name, &idl.head.initializer, &mut idl.head.ty.qualifier)
+                {
+                    if qual.qualifiers.0.iter().any(is_const) {
+                        if let Some(prop) = extract_prop(name.as_str(), init.as_ref()) {
+                            res.push(prop);
+                            idl.head.initializer = None;
                         }
-                        _ => {}
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -223,7 +214,7 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
 
     push_sym();
     for (i, line) in s.lines().enumerate() {
-        if line.trim_start().starts_with("#") {
+        if line.trim_start().starts_with('#') {
             // Marker declaration
             buff.push_str(format!("float __LINE{}__;\n", i).as_str());
 
@@ -231,7 +222,7 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
             let def = Preprocessor::parse(line.trim_start()).unwrap();
             let prop = match def {
                 Preprocessor::Define(PreprocessorDefine::ObjectLike { ref ident, ref value }) if extract_props => {
-                    Statement::parse(&value)
+                    Statement::parse(value)
                         .ok()
                         .and_then(|x| if let Statement::Simple(s) = x { Some(s) } else { None })
                         .and_then(|x| {
@@ -241,7 +232,7 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
                                 None
                             }
                         })
-                        .or(Expr::parse(&value).ok())
+                        .or(Expr::parse(value).ok())
                         .and_then(|x| extract_prop(ident.as_str(), &x))
                 }
                 _ => None,
@@ -258,7 +249,7 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
             }
         } else {
             buff.push_str(line);
-            buff.push_str("\n");
+            buff.push('\n');
         }
     }
 
@@ -288,7 +279,7 @@ pub fn replace_macros(s: String, defs: HashMap<usize, String>) -> String {
             }
         } else {
             buff.push_str(line);
-            buff.push_str("\n");
+            buff.push('\n');
         }
     }
 
@@ -310,7 +301,7 @@ fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<Pr
                         .tail
                         .iter_mut()
                         .find(|x| lut.contains(&x.ident.ident.0.to_lowercase().as_str()))
-                        .map(|x| PropDeclaration::SingleNoType(x));
+                        .map(PropDeclaration::SingleNoType);
                     if let Some(ref name) = decl.head.name {
                         if lut.contains(&name.0.to_lowercase().as_str()) {
                             Some(PropDeclaration::Single(&mut decl.head))
@@ -342,7 +333,7 @@ fn find_param<'a>(fdef: &'a mut FunctionDefinition, lut: Vec<&str>) -> Option<Pr
                 .iter_mut()
                 .find_map(|stmt| get_statement_decls(stmt, lut)),
         }
-    };
+    }
 
     fdef.statement
         .statement_list
@@ -415,7 +406,7 @@ fn remove_param(fdef: &mut FunctionDefinition, name: &str) {
     }
 
     fn remove_param_stmt_vec(stmts: &mut Vec<Statement>, name: &str) {
-        stmts.drain_filter(|x| remove_param_stmt(x, name)).for_each(|_x| ());
+        stmts.extract_if(|x| remove_param_stmt(x, name)).for_each(|_x| ());
     }
 
     remove_param_stmt_vec(&mut fdef.statement.statement_list, name);
