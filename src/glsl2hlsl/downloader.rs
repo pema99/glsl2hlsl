@@ -23,6 +23,8 @@ struct ShaderInfo {
 struct ShaderRenderPass {
     inputs: Vec<ShaderInput>,
     code: String,
+    #[serde(rename = "type", default)]
+    pass_type: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -54,6 +56,17 @@ pub fn download_shader(id: &str) -> Result<Shader, ureq::Error> {
 
 pub fn make_shader(json: &str) -> Result<Shader, serde_json::Error> {
     Ok(serde_json::from_str::<ShaderContainer>(json)?.Shader)
+}
+
+// Returns the GLSL source of the shader's Image renderpass (or the first pass
+// if no Image pass is present).
+pub fn extract_image_pass_code(shader: &Shader) -> Option<String> {
+    shader
+        .renderpass
+        .iter()
+        .find(|p| p.pass_type.eq_ignore_ascii_case("image"))
+        .or_else(|| shader.renderpass.first())
+        .map(|p| p.code.clone())
 }
 
 fn generate_guid(shader: &Shader) -> String {

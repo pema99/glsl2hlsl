@@ -1,6 +1,6 @@
 mod utils;
 
-use glsl2hlsl::{get_files, make_shader};
+use glsl2hlsl::{extract_image_pass_code, make_shader};
 use wasm_bindgen::prelude::*;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -9,11 +9,6 @@ use wasm_bindgen::prelude::*;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-#[wasm_bindgen(module = "/www/file.js")]
-extern "C" {
-    fn download_file(name: &str, contents: &str);
-}
-
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
@@ -21,15 +16,19 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub fn transpile(input: String, extract_props: bool, raymarch: bool) -> String {
-    glsl2hlsl::transpile(input, extract_props, raymarch)
+pub fn transpile(input: String) -> String {
+    glsl2hlsl::transpile(input, false, false)
 }
 
+// Takes a Shadertoy API JSON response and returns the converted HLSL of
+// the first Image-pass renderpass. Returns empty string on parse failure.
 #[wasm_bindgen]
-pub fn download(json: String, extract_props: bool, raymarch: bool) {
-    let shader = make_shader(&json).unwrap();
-    let files = get_files(&shader, extract_props, raymarch);
-    for f in files.iter() {
-        download_file(&f.name, &f.contents);
+pub fn transpile_shadertoy_json(json: String) -> String {
+    match make_shader(&json) {
+        Ok(shader) => match extract_image_pass_code(&shader) {
+            Some(code) => glsl2hlsl::transpile(code, false, false),
+            None => String::new(),
+        },
+        Err(e) => format!("// Failed to parse Shadertoy JSON: {}", e),
     }
 }

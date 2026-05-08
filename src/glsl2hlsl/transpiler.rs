@@ -31,7 +31,7 @@ pub fn transpile(input: String, extract_props: bool, raymarch: bool) -> String {
 }
 
 // I'm gonna burn in hell for this
-static mut INDENT_LEVEL: usize = 3;
+static mut INDENT_LEVEL: usize = 0;
 fn add_indent() {
     unsafe {
         INDENT_LEVEL += 1;
@@ -107,16 +107,16 @@ where
     F: Write,
 {
     let rep = match i.0.as_str() {
-        "iTime" => "_Time.y",
-        "iTimeDelta" => "unity_DeltaTime.x",
-        "iChannel0" => "_MainTex",
-        "iChannel1" => "_SecondTex",
-        "iChannel2" => "_ThirdTex",
-        "iChannel3" => "_FourthTex",
-        "gl_FragCoord" => "(vertex_output.uv * _Resolution)",
+        "iTime" => "_Time",
+        "iTimeDelta" => "(1.0/60.0)",
+        "iChannel0" => "_iChannel0",
+        "iChannel1" => "_iChannel1",
+        "iChannel2" => "_iChannel2",
+        "iChannel3" => "_iChannel3",
+        "gl_FragCoord" => "float4(__position.x, _Resolution.y - __position.y, 0, 0)",
         "iMouse" => "_Mouse",
 
-        //iResolution, iFrame, iChannelTime, iChannelResolution, iMouse, iDate, iSampleRate
+        //iResolution, iFrame, iChannelTime, iChannelResolution, iDate, iSampleRate
         a => escape_invalid_glsl_id(a),
     };
     let _ = f.write_str(rep);
@@ -1854,93 +1854,35 @@ where
     F: Write,
 {
     let _ = f.write_str(
-        "Shader \"Converted/Template\"
-{
-    Properties
-    {
-        _MainTex (\"iChannel0\", 2D) = \"white\" {}
-        _SecondTex (\"iChannel1\", 2D) = \"white\" {}
-        _ThirdTex (\"iChannel2\", 2D) = \"white\" {}
-        _FourthTex (\"iChannel3\", 2D) = \"white\" {}
-        _Mouse (\"Mouse\", Vector) = (0.5, 0.5, 0.5, 0.5)
-        [ToggleUI] _GammaCorrect (\"Gamma Correction\", Float) = 1
-        _Resolution (\"Resolution (Change if AA is bad)\", Range(1, 1024)) = 1",
+        "// === ShaderToy compatability ===
+#define iResolution float3(_Resolution, _Resolution.x)
+#define iTime _Time
+#define iTimeDelta (1.0/60.0)
+#define iFrame ((int)(_Time * 60))
+#define iMouse _Mouse
+#define iChannelTime float4(_Time, _Time, _Time, _Time)
+#define iDate float4(2020, 6, 18, 30)
+#define iSampleRate (44100)
+#define iChannelResolution float4x4(_Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0)
+#define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
+#define texture(ch, uv) ((float4)0)
+#define textureLod(ch, uv, lod) ((float4)0)
+#define texelFetch(ch, uv, lod) ((float4)0)
+// === End ShaderToy compatability ===
+
+",
     );
 
-    // Add props
+    // Render extracted props as plain HLSL globals with their default values.
     if !props.is_empty() {
-        let _ = f.write_str("\n\n        [Header(Extracted)]\n");
         for prop in props.iter() {
-            let _ = f.write_str("        ");
-            if prop.toggle {
-                let _ = f.write_str("[ToggleUI] ");
-            }
             let _ = f.write_fmt(format_args!(
-                "{} (\"{}\", {}) = {}\n",
-                prop.name, prop.name, prop.prop_type, prop.val
+                "static {} {} = {};\n",
+                prop.val_type, prop.name, prop.val
             ));
         }
+        let _ = f.write_str("\n");
     }
-
-    let _ = f.write_str("\n    }
-    SubShader
-    {
-        Pass
-        {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-
-            #include \"UnityCG.cginc\"
-
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                float4 vertex : SV_POSITION;
-            };
-
-            // Built-in properties
-            sampler2D _MainTex;   float4 _MainTex_TexelSize;
-            sampler2D _SecondTex; float4 _SecondTex_TexelSize;
-            sampler2D _ThirdTex;  float4 _ThirdTex_TexelSize;
-            sampler2D _FourthTex; float4 _FourthTex_TexelSize;
-            float4 _Mouse;
-            float _GammaCorrect;
-            float _Resolution;
-
-            // GLSL Compatability macros
-            #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
-            #define texelFetch(ch, uv, lod) tex2Dlod(ch, float4((uv).xy * ch##_TexelSize.xy + ch##_TexelSize.xy * 0.5, 0, lod))
-            #define textureLod(ch, uv, lod) tex2Dlod(ch, float4(uv, 0, lod))
-            #define iResolution float3(_Resolution, _Resolution, _Resolution)
-            #define iFrame (floor(_Time.y / 60))
-            #define iChannelTime float4(_Time.y, _Time.y, _Time.y, _Time.y)
-            #define iDate float4(2020, 6, 18, 30)
-            #define iSampleRate (44100)
-            #define iChannelResolution float4x4(                      \\
-                _MainTex_TexelSize.z,   _MainTex_TexelSize.w,   0, 0, \\
-                _SecondTex_TexelSize.z, _SecondTex_TexelSize.w, 0, 0, \\
-                _ThirdTex_TexelSize.z,  _ThirdTex_TexelSize.w,  0, 0, \\
-                _FourthTex_TexelSize.z, _FourthTex_TexelSize.w, 0, 0)
-
-            // Global access to uv data
-            static v2f vertex_output;
-
-            v2f vert (appdata v)
-            {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv =  v.uv;
-                return o;
-            }
-
-");
 
     for ed in &(tu.0).0 {
         match ed {
@@ -1957,29 +1899,22 @@ where
                         _ => panic!(),
                     };
 
-                    let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("float4 frag (v2f __vertex_output) : SV_Target\n");
-                    let _ = f.write_str(get_indent().as_str());
+                    let _ = f.write_str("float4 frag(float4 __position : SV_Position) : SV_Target\n");
                     let _ = f.write_str("{\n");
                     add_indent();
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_str("vertex_output = __vertex_output;\n");
-                    let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("float4 {} = 0;\n", frag));
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!("float2 {} = vertex_output.uv * _Resolution;\n", uv));
+                    let _ = f.write_fmt(format_args!(
+                        "float2 {} = float2(__position.x, _Resolution.y - __position.y);\n",
+                        uv
+                    ));
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
                     let _ = f.write_str(get_indent().as_str());
-                    let _ = f.write_fmt(format_args!(
-                        "if (_GammaCorrect) {}.rgb = pow({}.rgb, 2.2);\n",
-                        frag, frag
-                    ));
-                    let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("return {};\n", frag));
                     sub_indent();
-                    let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_str("}\n");
 
                     pop_sym();
@@ -1990,16 +1925,20 @@ where
             _ => show_external_declaration(f, ed, &props),
         };
     }
-
-    let _ = f.write_str(
-        "            ENDCG
-        }
-    }
-}",
-    );
 }
 
 fn show_translation_unit_raymarch<F>(f: &mut F, tu: &TranslationUnit, props: Vec<ShaderProp>)
+where
+    F: Write,
+{
+    // Raymarch mode previously emitted Unity-specific world-space scaffolding
+    // (VFACE / WorldToObject / hitPos_w). The debugger target has no equivalent,
+    // so route through the standard path. The flag is kept for API compatibility.
+    show_translation_unit(f, tu, props);
+}
+
+#[cfg(any())]
+fn _show_translation_unit_raymarch_unused<F>(f: &mut F, _tu: &TranslationUnit, _props: Vec<ShaderProp>)
 where
     F: Write,
 {
