@@ -11,7 +11,7 @@ fn main() {
     let path = std::path::Path::new(args[1].as_str());
     let glsl = std::fs::read_to_string(path).expect("Error reading file");
 
-    let compiled = transpile(glsl, true, true);
+    let compiled = transpile(glsl, false, false);
 
     let mut arg = args[1].clone();
     arg.push_str(".shader");

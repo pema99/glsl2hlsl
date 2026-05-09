@@ -213,13 +213,34 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
     let mut props: Vec<ShaderProp> = Vec::new(); //name, type, value, toggle
 
     push_sym();
-    for (i, line) in s.lines().enumerate() {
+    let lines: Vec<&str> = s.lines().collect();
+    let mut idx = 0;
+    while idx < lines.len() {
+        let line = lines[idx];
         if line.trim_start().starts_with('#') {
-            // Marker declaration
-            buff.push_str(format!("float __LINE{}__;\n", i).as_str());
+            // Collect any backslash-continued lines.
+            let mut joined = String::new();
+            let mut last_consumed = idx;
+            loop {
+                let ln = lines[last_consumed];
+                let trimmed = ln.trim_end();
+                if trimmed.ends_with('\\') && last_consumed + 1 < lines.len() {
+                    joined.push_str(&trimmed[..trimmed.len() - 1]);
+                    joined.push(' ');
+                    last_consumed += 1;
+                } else {
+                    joined.push_str(ln);
+                    break;
+                }
+            }
+
+            // Marker declarations (one per source line so line numbers stay aligned).
+            for c in idx..=last_consumed {
+                buff.push_str(format!("float __LINE{}__;\n", c).as_str());
+            }
 
             // Parse def, extract prop
-            let def = Preprocessor::parse(line.trim_start()).unwrap();
+            let def = Preprocessor::parse(joined.trim_start()).unwrap();
             let prop = match def {
                 Preprocessor::Define(PreprocessorDefine::ObjectLike { ref ident, ref value }) if extract_props => {
                     Statement::parse(value)
@@ -240,16 +261,18 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
 
             // Handle prop if found, otherwise handle define normally
             if let Some(prop) = prop {
-                defs.insert(i, format!("{} {};\n", prop.val_type, prop.name));
+                defs.insert(idx, format!("{} {};\n", prop.val_type, prop.name));
                 props.push(prop);
             } else {
                 let mut rep = String::new();
                 show_preprocessor(&mut rep, &def);
-                defs.insert(i, rep);
+                defs.insert(idx, rep);
             }
+            idx = last_consumed + 1;
         } else {
             buff.push_str(line);
             buff.push('\n');
+            idx += 1;
         }
     }
 

@@ -252,9 +252,18 @@ pub fn get_function_ret_type(s: &str, args: Vec<Option<TypeKind>>) -> Option<Typ
     }
 }
 
+fn shadertoy_global_type(name: &str) -> Option<TypeKind> {
+    match name {
+        "iResolution" => Some(TypeKind::Vector(3)),
+        "iMouse" | "iChannelTime" | "iDate" => Some(TypeKind::Vector(4)),
+        "iTime" | "iTimeDelta" | "iFrame" | "iSampleRate" => Some(TypeKind::Scalar),
+        _ => None,
+    }
+}
+
 pub fn get_expr_type(e: &Expr) -> Option<TypeKind> {
     match e {
-        Expr::Variable(ref i) => lookup_sym(i.as_str()),
+        Expr::Variable(ref i) => lookup_sym(i.as_str()).or_else(|| shadertoy_global_type(i.as_str())),
         Expr::IntConst(ref _x) => Some(TypeKind::Scalar),
         Expr::UIntConst(ref _x) => Some(TypeKind::Scalar),
         Expr::BoolConst(ref _x) => Some(TypeKind::Scalar),
@@ -267,7 +276,7 @@ pub fn get_expr_type(e: &Expr) -> Option<TypeKind> {
                 (Some(_), _, Some(TypeKind::Scalar)) => l, // anything op scalar = scalar
                 (Some(TypeKind::Scalar), _, Some(_)) => r, // scalar op anything = scalar
                 (Some(TypeKind::Vector(_)), _, Some(TypeKind::Vector(_))) => l, // componentwise vector
-                (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => Some(TypeKind::Scalar), // matrix multiplication
+                (Some(TypeKind::Matrix(r, _)), BinaryOp::Mult, Some(TypeKind::Matrix(_, c))) => Some(TypeKind::Matrix(r, c)), // matrix multiplication
                 (Some(TypeKind::Matrix(_, _)), _, Some(TypeKind::Matrix(_, _))) => l, // componentwise matrix
                 (Some(TypeKind::Vector(_)), BinaryOp::Mult, Some(TypeKind::Matrix(_, _))) => l, // vector matrix mul
                 (Some(TypeKind::Matrix(_, _)), BinaryOp::Mult, Some(TypeKind::Vector(_))) => r, // matrix vector mul

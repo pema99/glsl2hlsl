@@ -46,6 +46,19 @@ fn get_indent() -> String {
     unsafe { "    ".repeat(INDENT_LEVEL) }
 }
 
+static mut FRAG_RETURN_NAME: Option<String> = None;
+fn set_frag_return_name(name: Option<String>) {
+    unsafe {
+        FRAG_RETURN_NAME = name;
+    }
+}
+fn get_frag_return_name() -> Option<String> {
+    unsafe {
+        #[allow(static_mut_refs)]
+        FRAG_RETURN_NAME.clone()
+    }
+}
+
 // Precedence information for transpiling parentheses properly
 trait HasPrecedence {
     fn precedence(&self) -> u32;
@@ -737,6 +750,22 @@ where
             show_array_spec(f, a);
         }
         Expr::FunCall(ref fun, ref args) => {
+            // GLSL array constructor `T[N](e1, e2, ...)` parses as a FunCall whose
+            // identifier is an Expr::Bracket. HLSL uses brace-init for arrays.
+            if let FunIdentifier::Expr(ref id_expr) = *fun {
+                if matches!(**id_expr, Expr::Bracket(_, _)) {
+                    let _ = f.write_str("{ ");
+                    for (i, e) in args.iter().enumerate() {
+                        if i > 0 {
+                            let _ = f.write_str(", ");
+                        }
+                        show_expr(f, e);
+                    }
+                    let _ = f.write_str(" }");
+                    return;
+                }
+            }
+
             let mut id = String::new();
             show_function_identifier(&mut id, fun);
 
@@ -801,11 +830,33 @@ where
                 _ => -1,
             };
             if expected_arity != -1 && args.len() == 1 {
-                let _ = f.write_str("((");
-                let _ = f.write_str(id.as_str());
-                let _ = f.write_str(")");
-                show_expr(f, &args[0]);
-                let _ = f.write_str(")");
+                // GLSL `vecN(largerVec)` truncates by taking the first N components.
+                // Slang rejects `(floatN)largerVec` as a cast, so emit a swizzle.
+                let target_vec_dim: Option<usize> = match id.as_str() {
+                    "bool2" | "int2" | "uint2" | "double2" | "float2" => Some(2),
+                    "bool3" | "int3" | "uint3" | "double3" | "float3" => Some(3),
+                    "bool4" | "int4" | "uint4" | "double4" | "float4" => Some(4),
+                    _ => None,
+                };
+                let src_vec_dim = match get_expr_type(&args[0]) {
+                    Some(TypeKind::Vector(n)) => Some(n),
+                    _ => None,
+                };
+                match (target_vec_dim, src_vec_dim) {
+                    (Some(t), Some(s)) if s > t => {
+                        let _ = f.write_str("(");
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(").");
+                        let _ = f.write_str(&"xyzw"[..t]);
+                    }
+                    _ => {
+                        let _ = f.write_str("((");
+                        let _ = f.write_str(id.as_str());
+                        let _ = f.write_str(")");
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(")");
+                    }
+                }
             } else {
                 // Handle wierd tex2D overloads
                 let mut args = args.clone();
@@ -1094,7 +1145,7 @@ where
             if global && !invalid_static {
                 let _ = f.write_str("static ");
             }
-            show_init_declarator_list(f, list);
+            show_init_declarator_list(f, list, !global);
             let _ = f.write_str(";");
         }
         Declaration::Precision(ref _qual, ref _ty) => {
@@ -1190,7 +1241,7 @@ where
     show_arrayed_identifier(f, &p.ident);
 }
 
-fn show_init_declarator_list<F>(f: &mut F, i: &InitDeclaratorList)
+fn show_init_declarator_list<F>(f: &mut F, i: &InitDeclaratorList, zero_init_locals: bool)
 where
     F: Write,
 {
@@ -1207,15 +1258,15 @@ where
         add_all_sym(tk);
     }
 
-    show_single_declaration(f, &i.head);
+    show_single_declaration(f, &i.head, zero_init_locals);
 
     for decl in &i.tail {
         let _ = f.write_str(", ");
-        show_single_declaration_no_type(f, decl);
+        show_single_declaration_no_type(f, decl, zero_init_locals);
     }
 }
 
-fn show_single_declaration<F>(f: &mut F, d: &SingleDeclaration)
+fn show_single_declaration<F>(f: &mut F, d: &SingleDeclaration, zero_init_local: bool)
 where
     F: Write,
 {
@@ -1233,10 +1284,21 @@ where
     if let Some(ref initializer) = d.initializer {
         let _ = f.write_str(" = ");
         show_initializer(f, initializer);
+    } else if zero_init_local
+        && d.array_specifier.is_none()
+        && d.ty.ty.array_specifier.is_none()
+        && !matches!(
+            d.ty.ty.ty,
+            TypeSpecifierNonArray::Struct(_) | TypeSpecifierNonArray::TypeName(_)
+        )
+    {
+        // Match GLSL's default-zero behavior for locals. HLSL leaves them
+        // undefined, which can produce surprising NaNs / black output.
+        let _ = f.write_str(zero_literal_for(&d.ty.ty.ty));
     }
 }
 
-fn show_single_declaration_no_type<F>(f: &mut F, d: &SingleDeclarationNoType)
+fn show_single_declaration_no_type<F>(f: &mut F, d: &SingleDeclarationNoType, zero_init_local: bool)
 where
     F: Write,
 {
@@ -1245,6 +1307,18 @@ where
     if let Some(ref initializer) = d.initializer {
         let _ = f.write_str(" = ");
         show_initializer(f, initializer);
+    } else if zero_init_local && d.ident.array_spec.is_none() {
+        let _ = f.write_str(" = 0");
+    }
+}
+
+fn zero_literal_for(t: &TypeSpecifierNonArray) -> &'static str {
+    match t {
+        TypeSpecifierNonArray::Bool
+        | TypeSpecifierNonArray::BVec2
+        | TypeSpecifierNonArray::BVec3
+        | TypeSpecifierNonArray::BVec4 => " = false",
+        _ => " = 0",
     }
 }
 
@@ -1323,10 +1397,17 @@ where
             FunctionParameterDeclaration::Named(_, decl) => match decl.ty.ty {
                 TypeSpecifierNonArray::Struct(_) | TypeSpecifierNonArray::TypeName(_) => {}
                 _ => {
+                    let zero: Expr = match decl.ty.ty {
+                        TypeSpecifierNonArray::Bool
+                        | TypeSpecifierNonArray::BVec2
+                        | TypeSpecifierNonArray::BVec3
+                        | TypeSpecifierNonArray::BVec4 => Expr::BoolConst(false),
+                        _ => Expr::IntConst(0),
+                    };
                     let assign = Statement::Simple(Box::new(SimpleStatement::Expression(Some(Expr::Assignment(
                         Box::new(Expr::Variable(decl.ident.ident.clone())),
                         AssignmentOp::Equal,
-                        Box::new(Expr::IntConst(0)),
+                        Box::new(zero),
                     )))));
                     stmts.statement_list.insert(0, assign);
                 }
@@ -1580,6 +1661,8 @@ where
             let _ = f.write_str("return ");
             if let Some(e) = e {
                 show_expr(f, e);
+            } else if let Some(name) = get_frag_return_name() {
+                let _ = f.write_str(name.as_str());
             }
             let _ = f.write_str(";\n");
         }
@@ -1613,8 +1696,8 @@ where
     F: Write,
 {
     let handle_define = |ident: &Identifier, value: &String| {
-        let paren = value.trim().starts_with('(') && value.trim().ends_with(')');
         let mut res = String::from(value);
+        let mut wrap = false;
         if let Ok(stmt) = Statement::parse(value) {
             res.clear();
             if let Statement::Simple(s) = &stmt {
@@ -1630,6 +1713,18 @@ where
             if let Some(ty) = get_expr_type(&expr) {
                 add_sym(ident.0.clone(), ty);
             }
+            // Wrap non-atomic macro bodies in parens. Without this, member
+            // access / indexing on a macro use binds tighter than operators
+            // inside the body, e.g. `MOUSE.x` -> `a/b.x` instead of `(a/b).x`.
+            wrap = !matches!(
+                expr,
+                Expr::Variable(_)
+                    | Expr::IntConst(_)
+                    | Expr::UIntConst(_)
+                    | Expr::BoolConst(_)
+                    | Expr::FloatConst(_)
+                    | Expr::DoubleConst(_)
+            );
             // TODO: This should be recursive
             match expr {
                 Expr::Variable(id) => show_expr(
@@ -1639,7 +1734,7 @@ where
                 _ => show_expr(&mut res, &expr),
             };
         }
-        if paren {
+        if wrap {
             format!("({})", res)
         } else {
             res
@@ -1909,9 +2004,11 @@ where
                         "float2 {} = float2(__position.x, _Resolution.y - __position.y);\n",
                         uv
                     ));
+                    set_frag_return_name(Some(frag.to_string()));
                     for st in &fdef.statement.statement_list {
                         show_statement(f, st, true);
                     }
+                    set_frag_return_name(None);
                     let _ = f.write_str(get_indent().as_str());
                     let _ = f.write_fmt(format_args!("return {};\n", frag));
                     sub_indent();
