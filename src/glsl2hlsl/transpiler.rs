@@ -265,7 +265,7 @@ where
             let _ = f.write_str("double4x3");
         }
         TypeSpecifierNonArray::Sampler2D => {
-            let _ = f.write_str("sampler2D");
+            let _ = f.write_str("Texture2D");
         }
         TypeSpecifierNonArray::Struct(ref s) => show_struct_non_declaration(f, s),
         TypeSpecifierNonArray::TypeName(ref tn) => show_type_name(f, tn),
@@ -1960,9 +1960,14 @@ where
 #define iSampleRate (44100)
 #define iChannelResolution float4x4(_Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0)
 #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
-#define texture(ch, uv) ((float4)0)
-#define textureLod(ch, uv, lod) ((float4)0)
-#define texelFetch(ch, uv, lod) ((float4)0)
+Texture2D _iChannel0;
+Texture2D _iChannel1;
+Texture2D _iChannel2;
+Texture2D _iChannel3;
+SamplerState _Sampler;
+#define texture(ch, uv) ch.Sample(_Sampler, uv)
+#define textureLod(ch, uv, lod) ch.SampleLevel(_Sampler, uv, lod)
+#define texelFetch(ch, uv, lod) ch.Load(int3(uv, lod))
 // === End ShaderToy compatability ===
 
 ",
