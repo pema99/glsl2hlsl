@@ -1968,6 +1968,7 @@ SamplerState _Sampler;
 #define texture(ch, uv) ch.Sample(_Sampler, uv)
 #define textureLod(ch, uv, lod) ch.SampleLevel(_Sampler, uv, lod)
 #define texelFetch(ch, uv, lod) ch.Load(int3(uv, lod))
+int2 textureSize(Texture2D t, int lod) { uint w, h, n; t.GetDimensions((uint)lod, w, h, n); return int2(w, h); }
 // === End ShaderToy compatability ===
 
 ",
