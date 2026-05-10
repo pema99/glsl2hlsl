@@ -122,10 +122,6 @@ where
     let rep = match i.0.as_str() {
         "iTime" => "_Time",
         "iTimeDelta" => "(1.0/60.0)",
-        "iChannel0" => "_iChannel0",
-        "iChannel1" => "_iChannel1",
-        "iChannel2" => "_iChannel2",
-        "iChannel3" => "_iChannel3",
         "gl_FragCoord" => "float4(__position.x, _Resolution.y - __position.y, 0, 0)",
         "iMouse" => "_Mouse",
 
@@ -737,8 +733,23 @@ where
             }
         }
         Expr::Bracket(ref e, ref a) => {
-            // Note: bracket is left-to-right associative
+            if let Expr::Variable(ref id) = **e {
+                if id.0.as_str() == "iChannelResolution" && a.dimensions.0.len() == 1 {
+                    if let ArraySpecifierDimension::ExplicitlySized(ref idx) = a.dimensions.0[0] {
+                        let lit = match **idx {
+                            Expr::IntConst(n) if (0..=3).contains(&n) => Some(n),
+                            Expr::UIntConst(n) if n <= 3 => Some(n as i32),
+                            _ => None,
+                        };
+                        if let Some(n) = lit {
+                            let _ = f.write_fmt(format_args!("float3(textureSize(iChannel{}, 0), 1.0)", n));
+                            return;
+                        }
+                    }
+                }
+            }
 
+            // Note: bracket is left-to-right associative
             if e.precedence() <= expr.precedence() {
                 show_expr(f, e);
             } else {
@@ -763,6 +774,71 @@ where
                     }
                     let _ = f.write_str(" }");
                     return;
+                }
+            }
+
+            if let FunIdentifier::Identifier(ref n) = *fun {
+                let glsl_name = n.0.as_str();
+                let emit_flipped_uv = |f: &mut F, uv: &Expr| {
+                    let _ = f.write_str("float2((");
+                    show_expr(f, uv);
+                    let _ = f.write_str(").x, 1.0 - (");
+                    show_expr(f, uv);
+                    let _ = f.write_str(").y)");
+                };
+                match (glsl_name, args.len()) {
+                    ("texture", 2) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".Sample(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
+                    ("texture", 3) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".SampleBias(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
+                    ("textureLod", 3) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".SampleLevel(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
+                    ("textureGrad", 4) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".SampleGrad(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[3]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
+                    ("texelFetch", 3) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".Load(int3((");
+                        show_expr(f, &args[1]);
+                        let _ = f.write_str(").x, textureSize(");
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(").y - 1 - (");
+                        show_expr(f, &args[1]);
+                        let _ = f.write_str(").y, ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str("))");
+                        return;
+                    }
+                    _ => {}
                 }
             }
 
@@ -1950,24 +2026,20 @@ where
 {
     let _ = f.write_str(
         "// === ShaderToy compatability ===
-#define iResolution float3(_Resolution, _Resolution.x)
+#define iResolution float3(_Resolution, 1.0)
 #define iTime _Time
 #define iTimeDelta (1.0/60.0)
+#define iFrameRate (60.0)
 #define iFrame ((int)(_Time * 60))
 #define iMouse _Mouse
-#define iChannelTime float4(_Time, _Time, _Time, _Time)
 #define iDate float4(2020, 6, 18, 30)
-#define iSampleRate (44100)
-#define iChannelResolution float4x4(_Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0, _Resolution.x, _Resolution.y, 0, 0)
+#define iSampleRate (44100.0)
 #define glsl_mod(x,y) (((x)-(y)*floor((x)/(y))))
-Texture2D _iChannel0;
-Texture2D _iChannel1;
-Texture2D _iChannel2;
-Texture2D _iChannel3;
+Texture2D iChannel0;
+Texture2D iChannel1;
+Texture2D iChannel2;
+Texture2D iChannel3;
 SamplerState _Sampler;
-#define texture(ch, uv) ch.Sample(_Sampler, uv)
-#define textureLod(ch, uv, lod) ch.SampleLevel(_Sampler, uv, lod)
-#define texelFetch(ch, uv, lod) ch.Load(int3(uv, lod))
 int2 textureSize(Texture2D t, int lod) { uint w, h, n; t.GetDimensions((uint)lod, w, h, n); return int2(w, h); }
 // === End ShaderToy compatability ===
 

@@ -180,9 +180,6 @@ pub fn translate_glsl_id(s: &str) -> &str {
         // Builtins
         "mix" => "lerp",
         "fract" => "frac",
-        "texture" => "tex2D",
-        "tex2DLod" => "tex2Dlod",
-        "textureGrad" => "tex2Dgrad",
         "refrac" => "refract",
         "mod" => "glsl_mod",
         "atan" => "atan2",
