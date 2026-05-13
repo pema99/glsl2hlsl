@@ -812,6 +812,26 @@ where
                         let _ = f.write_str(")");
                         return;
                     }
+                    ("textureOffset", 3) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".Sample(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
+                    ("textureLodOffset", 4) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".SampleLevel(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[3]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
                     ("textureGrad", 4) => {
                         show_expr(f, &args[0]);
                         let _ = f.write_str(".SampleGrad(_Sampler, ");
@@ -820,6 +840,19 @@ where
                         show_expr(f, &args[2]);
                         let _ = f.write_str(", ");
                         show_expr(f, &args[3]);
+                        let _ = f.write_str(")");
+                        return;
+                    }
+                    ("textureGradOffset", 5) => {
+                        show_expr(f, &args[0]);
+                        let _ = f.write_str(".SampleGrad(_Sampler, ");
+                        emit_flipped_uv(f, &args[1]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[2]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[3]);
+                        let _ = f.write_str(", ");
+                        show_expr(f, &args[4]);
                         let _ = f.write_str(")");
                         return;
                     }
