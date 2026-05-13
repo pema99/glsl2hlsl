@@ -205,6 +205,35 @@ pub fn process_globals(tu: &mut TranslationUnit, extract_props: bool) -> Vec<Sha
     res
 }
 
+// Scans a line and returns the block-comment state at its end, given the
+// state at its start. Lines starting inside a /* */ block must not be
+// treated as preprocessor directives even when their first non-whitespace
+// character is `#`.
+fn scan_block_comment_state(line: &str, mut in_block_comment: bool) -> bool {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if in_block_comment {
+            if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                in_block_comment = false;
+                i += 2;
+                continue;
+            }
+        } else {
+            if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+                in_block_comment = true;
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'/' && bytes[i + 1] == b'/' {
+                break;
+            }
+        }
+        i += 1;
+    }
+    in_block_comment
+}
+
 // Need this hack in an attempt to support the preprocessor since GLSL
 // crate doesn't really support it.
 pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize, String>, Vec<ShaderProp>) {
@@ -215,9 +244,10 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
     push_sym();
     let lines: Vec<&str> = s.lines().collect();
     let mut idx = 0;
+    let mut in_block_comment = false;
     while idx < lines.len() {
         let line = lines[idx];
-        if line.trim_start().starts_with('#') {
+        if !in_block_comment && line.trim_start().starts_with('#') {
             // Collect any backslash-continued lines.
             let mut joined = String::new();
             let mut last_consumed = idx;
@@ -268,8 +298,12 @@ pub fn process_macros(s: String, extract_props: bool) -> (String, HashMap<usize,
                 show_preprocessor(&mut rep, &def);
                 defs.insert(idx, rep);
             }
+            for c in idx..=last_consumed {
+                in_block_comment = scan_block_comment_state(lines[c], in_block_comment);
+            }
             idx = last_consumed + 1;
         } else {
+            in_block_comment = scan_block_comment_state(line, in_block_comment);
             buff.push_str(line);
             buff.push('\n');
             idx += 1;
